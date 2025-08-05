@@ -110,6 +110,7 @@ copy :: proc
 	command_buffer_begin_info: vk.CommandBufferBeginInfo
 
 	image_transitions: [dynamic]vk.ImageMemoryBarrier
+	image_transitions_index: int
 
 	transfer_fence_create_info: vk.FenceCreateInfo
 	transfer_submit_info: vk.SubmitInfo
@@ -272,7 +273,6 @@ copy :: proc
 	}
 
 	// Transition all images into .final_layout
-	image_transitions_index := 0
 	for _copy_info in copy_info_array {
 		switch copy_info in _copy_info {
 		case Copy_Info_Buffer_To_Buffer:
