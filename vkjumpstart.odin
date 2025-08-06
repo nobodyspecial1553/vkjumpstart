@@ -401,23 +401,25 @@ device_create :: proc(
 
 Swapchain :: struct {
 	handle: vk.SwapchainKHR,
-	images: []vk.Image, // Delete
-	views: []vk.ImageView, // Do not delete
+	image_array: []vk.Image,
+	view_array: []vk.ImageView,
 	surface_format: vk.SurfaceFormatKHR,
+	allocator: mem.Allocator,
 }
 
 swapchain_destroy :: proc(swapchain: Swapchain, device: vk.Device) {
 	vk.DeviceWaitIdle(device)
 
-	if swapchain.views != nil {
-		for view in swapchain.views {
+	if swapchain.view_array != nil {
+		for view in swapchain.view_array {
 			if view != 0 {
 				vk.DestroyImageView(device, view, nil)
 			}
 		}
 	}
-	if swapchain.images != nil {
-		delete(swapchain.images)
+	if swapchain.image_array != nil {
+		delete(swapchain.image_array)
+		delete(swapchain.view_array)
 	}
 	if swapchain.handle != 0 {
 		vk.DestroySwapchainKHR(device, swapchain.handle, nil)
@@ -427,12 +429,13 @@ swapchain_destroy :: proc(swapchain: Swapchain, device: vk.Device) {
 @(require_results)
 swapchain_create :: proc(
 	window_size: vk.Extent2D,
-	#any_int min_images: u32,
+	#any_int min_image_array: u32,
 	physical_device: vk.PhysicalDevice,
 	device: vk.Device,
 	surface: vk.SurfaceKHR,
 	queues: Queue_Array,
 	old_swapchain := Swapchain {},
+	allocator := context.allocator,
 	temp_allocator := context.temp_allocator,
 ) -> (
 	swapchain: Swapchain,
@@ -440,11 +443,12 @@ swapchain_create :: proc(
 ) #optional_ok {
 	image_count: u32
 
+	context.allocator = allocator
+	context.temp_allocator = temp_allocator
+
 	assert(window_size.width > 0)
 	assert(window_size.height > 0)
-	assert(min_images > 0)
-
-	context.temp_allocator = temp_allocator
+	assert(min_image_array > 0)
 
 	{
 		image_usage := vk.ImageUsageFlags {
@@ -489,7 +493,7 @@ swapchain_create :: proc(
 
 		check_result(vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities), "Unable to get Physical Device Surface capabilities!") or_return
 
-		image_count = max(cast(u32)min_images, surface_capabilities.minImageCount)
+		image_count = max(min_image_array, surface_capabilities.minImageCount)
 		image_count = min(image_count, surface_capabilities.maxImageCount if surface_capabilities.maxImageCount != 0 else max(u32))
 
 		presentation_queue_family = queues[.Presentation].family
@@ -512,9 +516,8 @@ swapchain_create :: proc(
 			clipped = true,
 			oldSwapchain = old_swapchain.handle,
 		}
-
 		check_result(vk.CreateSwapchainKHR(device, &swapchain_create_info, nil, &swapchain.handle), "Failed to create Swapchain!") or_return
-
+		swapchain.allocator = context.allocator
 	}
 
 	if old_swapchain.handle != 0 {
@@ -524,22 +527,19 @@ swapchain_create :: proc(
 	vk.GetSwapchainImagesKHR(device, swapchain.handle, &image_count, nil)
 	log.infof("Swapchain Image Count: %v", image_count)
 
-	#no_bounds_check {
-		swapchain_images_alloc := make([]vk.Image, image_count * 2)
-		swapchain.images = swapchain_images_alloc[:image_count]
-		swapchain.views = slice.reinterpret([]vk.ImageView, swapchain_images_alloc[image_count:])
-	}
+	swapchain.image_array = make([]vk.Image, image_count)
+	swapchain.view_array = make([]vk.ImageView, image_count)
 
-	#partial switch vk.GetSwapchainImagesKHR(device, swapchain.handle, &image_count, raw_data(swapchain.images)) {
+	#partial switch vk.GetSwapchainImagesKHR(device, swapchain.handle, &image_count, raw_data(swapchain.image_array)) {
 	case .SUCCESS:
 	case .INCOMPLETE:
 		log.warnf("Incomplete Retrieval of Swapchain Images!", image_count)
 	case .ERROR_OUT_OF_HOST_MEMORY:
-		log.error("Unable to get swapchain images!")
+		log.error("Unable to get swapchain image_array!")
 		log.error("OUT OF HOST MEMORY!")
 		return {}, false
 	case .ERROR_OUT_OF_DEVICE_MEMORY:
-		log.error("Unable to get swapchain images!")
+		log.error("Unable to get swapchain image_array!")
 		log.error("OUT OF DEVICE MEMORY!")
 		return {}, false
 	}
@@ -560,10 +560,10 @@ swapchain_create :: proc(
 				layerCount = 1,
 			},
 			viewType = .D2,
-			image = swapchain.images[i],
+			image = swapchain.image_array[i],
 		}
 
-		color_attachment_view_create_success = check_result(vk.CreateImageView(device, &color_attachment_view_create_info, nil, &swapchain.views[i]), "Unable to create Image Views for Swapchain!")
+		color_attachment_view_create_success = check_result(vk.CreateImageView(device, &color_attachment_view_create_info, nil, &swapchain.view_array[i]), "Unable to create Image Views for Swapchain!")
 		if color_attachment_view_create_success == false {
 			swapchain_destroy(swapchain, device)
 			return swapchain, false
@@ -604,7 +604,7 @@ find_optimal_physical_device :: proc(
 
 	chosen_physical_device_index = -1
 	chosen_physical_device_rating = -1
-	for physical_device, idx in physical_device_array {
+	for _, idx in physical_device_array {
 		REQUIRED_FLAGS :: vk.QueueFlags { .GRAPHICS, .COMPUTE, .TRANSFER, .SPARSE_BINDING }
 
 		current_physical_device_rating: int
@@ -617,9 +617,9 @@ find_optimal_physical_device :: proc(
 
 		{
 			queue_family_properties_count: u32
-			vk.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_properties_count, nil)
+			vk.GetPhysicalDeviceQueueFamilyProperties(physical_device_array[idx], &queue_family_properties_count, nil)
 			queue_family_properties_array = make([]vk.QueueFamilyProperties, queue_family_properties_count, context.temp_allocator)
-			vk.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_properties_count, raw_data(queue_family_properties_array))
+			vk.GetPhysicalDeviceQueueFamilyProperties(physical_device_array[idx], &queue_family_properties_count, raw_data(queue_family_properties_array))
 		}
 
 		for properties in queue_family_properties_array {
@@ -629,7 +629,7 @@ find_optimal_physical_device :: proc(
 			continue
 		}
 
-		vk.GetPhysicalDeviceProperties(physical_device, &physical_device_properties)
+		vk.GetPhysicalDeviceProperties(physical_device_array[idx], &physical_device_properties)
 		if physical_device_properties.deviceType == .DISCRETE_GPU {
 			current_physical_device_rating |= 0x8000_0000
 		}
