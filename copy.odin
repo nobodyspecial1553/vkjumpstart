@@ -59,8 +59,7 @@ Copy_Fence :: struct {
 	 Please check 'ok' for failure. There are many failure points!
 */
 @(require_results)
-copy :: proc
-(
+copy :: proc(
 	device: vk.Device,
 	transfer_command_pool: vk.CommandPool,
 	transfer_queue: vk.Queue,

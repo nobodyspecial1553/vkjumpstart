@@ -29,8 +29,7 @@ Texture :: struct {
 }
 
 @(require_results)
-texture_create :: proc
-(
+texture_create :: proc(
 	device: vk.Device,
 	physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties, 
 	image_create_info: vk.ImageCreateInfo,
@@ -39,7 +38,7 @@ texture_create :: proc
 ) -> (
 	texture: Texture,
 	ok: bool,
-) #optional_ok {
+) {
 	image_create_info := image_create_info
 
 	memory_requirements: vk.MemoryRequirements

@@ -15,8 +15,7 @@ import vk "vendor:vulkan"
 	 Returns the memory via the returns: `memory`
 */
 @(require_results)
-buffer_create :: proc
-(
+buffer_create :: proc(
 	device: vk.Device,
 	physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties,
 	buffer_create_infos: []vk.BufferCreateInfo,
