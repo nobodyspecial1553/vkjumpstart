@@ -339,6 +339,7 @@ device_create :: proc(
 					pQueuePriorities = cast([^]f32)&queue_priority_array,
 				}
 				queue_create_info_count += 1
+				break
 			}
 			else if queue_create_info.queueFamilyIndex == queue.family {
 				break
