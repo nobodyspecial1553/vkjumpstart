@@ -462,14 +462,42 @@ swapchain_create :: proc(
 			.R8G8B8A8_SNORM,
 			.R8G8B8A8_UNORM,
 		}
+		required_present_mode_array := [?]vk.PresentModeKHR {
+			.MAILBOX,
+			.FIFO_RELAXED,
+			.FIFO,
+			.IMMEDIATE,
+		}
 
 		swapchain_create_info: vk.SwapchainCreateInfoKHR
 
 		surface_capabilities: vk.SurfaceCapabilitiesKHR
 		presentation_queue_family: u32
 
+		present_mode_chosen: Maybe(vk.PresentModeKHR)
+		present_mode_count: u32
+		present_mode_array: []vk.PresentModeKHR
+
 		surface_format_count: u32
 		surface_format_array: []vk.SurfaceFormatKHR
+
+		vk.GetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, nil)
+		present_mode_array = make([]vk.PresentModeKHR, present_mode_count, context.temp_allocator)
+		vk.GetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, raw_data(present_mode_array))
+
+		present_mode_match_found: for required_present_mode in required_present_mode_array {
+			for present_mode in present_mode_array {
+				if present_mode == required_present_mode {
+					present_mode_chosen = present_mode
+					break present_mode_match_found
+				}
+			}
+		}
+		if _, present_mode_chosen_ok := present_mode_chosen.?; !present_mode_chosen_ok {
+			log.error("Unable to find suitable Present mode!")
+			return swapchain, false
+		}
+		log.infof("Selected Present Mode: %v", present_mode_chosen.?)
 
 		vk.GetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_format_count, nil)
 		surface_format_array = make([]vk.SurfaceFormatKHR, surface_format_count, context.temp_allocator)
@@ -487,7 +515,6 @@ swapchain_create :: proc(
 			log.error("Unable to find suitable Surface format!")
 			return swapchain, false
 		}
-
 		log.infof("Selected Surface Format: %v", swapchain.surface_format.format)
 		log.infof("Selected Surface Color Space: %v", swapchain.surface_format.colorSpace)
 
@@ -512,7 +539,7 @@ swapchain_create :: proc(
 			pQueueFamilyIndices = &presentation_queue_family,
 			preTransform = { .IDENTITY },
 			compositeAlpha = { .OPAQUE },
-			presentMode = .MAILBOX,
+			presentMode = present_mode_chosen.?,
 			clipped = true,
 			oldSwapchain = old_swapchain.handle,
 		}
