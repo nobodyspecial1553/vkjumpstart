@@ -404,6 +404,7 @@ Swapchain :: struct {
 	handle: vk.SwapchainKHR,
 	image_array: []vk.Image,
 	view_array: []vk.ImageView,
+	semaphore_render_complete_array: []vk.Semaphore,
 	surface_format: vk.SurfaceFormatKHR,
 	allocator: mem.Allocator,
 }
@@ -424,6 +425,9 @@ swapchain_destroy :: proc(swapchain: Swapchain, device: vk.Device) {
 	}
 	if swapchain.handle != 0 {
 		vk.DestroySwapchainKHR(device, swapchain.handle, nil)
+	}
+	for &semaphore in swapchain.semaphore_render_complete_array {
+		vk.DestroySemaphore(device, semaphore, nil)
 	}
 }
 
@@ -595,6 +599,17 @@ swapchain_create :: proc(
 		if color_attachment_view_create_success == false {
 			swapchain_destroy(swapchain, device)
 			return swapchain, false
+		}
+	}
+
+	{
+		semaphore_create_info := vk.SemaphoreCreateInfo {
+			sType = .SEMAPHORE_CREATE_INFO,
+		}
+
+		swapchain.semaphore_render_complete_array = make([]vk.Semaphore, image_count, allocator)
+		for &semaphore in swapchain.semaphore_render_complete_array {
+			vk.CreateSemaphore(device, &semaphore_create_info, nil, &semaphore)
 		}
 	}
 
