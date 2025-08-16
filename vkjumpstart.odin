@@ -142,7 +142,7 @@ instance_create :: proc(
 		}
 		validation_features_enable_array := [?]vk.ValidationFeatureEnableEXT {
 			.BEST_PRACTICES,
-			.GPU_ASSISTED,
+			/*.GPU_ASSISTED,*/
 			.SYNCHRONIZATION_VALIDATION,
 		}
 
