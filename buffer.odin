@@ -4,6 +4,7 @@ import "base:runtime"
 
 @(require) import "core:fmt"
 @(require) import "core:log"
+import "core:slice"
 
 import vk "vendor:vulkan"
 
@@ -18,7 +19,7 @@ import vk "vendor:vulkan"
 buffer_create :: proc(
 	device: vk.Device,
 	physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties,
-	buffer_create_infos: []vk.BufferCreateInfo,
+	buffer_create_info_array: []vk.BufferCreateInfo,
 	memory_property_flags: vk.MemoryPropertyFlags,
 	buffers_out: []vk.Buffer,
 ) -> (
@@ -33,11 +34,11 @@ buffer_create :: proc(
 	}
 
 	assert(len(buffers_out) > 0)
-	assert(len(buffer_create_infos) == len(buffers_out))
+	assert(len(buffer_create_info_array) == len(buffers_out))
 
 	// Create buffers
 	#no_bounds_check for &buffer_out, idx in buffers_out {
-		buffer_create_info := &buffer_create_infos[idx]
+		buffer_create_info := &buffer_create_info_array[idx]
 		buffer_create_info.sType = .BUFFER_CREATE_INFO
 		if check_result(vk.CreateBuffer(device, buffer_create_info, nil, &buffer_out)) == false {
 			log.errorf("Failed to create buffer '%v' [" + #procedure + "]", idx)
