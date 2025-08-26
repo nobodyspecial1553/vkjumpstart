@@ -88,7 +88,7 @@ shader_module_create_from_stream :: proc(
 
 	shader_module_create_info = vk.ShaderModuleCreateInfo {
 		sType = .SHADER_MODULE_CREATE_INFO,
-		codeSize = len(shader_code_buffer),
+		codeSize = len(shader_code_buffer) * 4,
 		pCode = cast(^u32)raw_data(shader_code_buffer),
 	}
 	if shader_module_create_err := vk.CreateShaderModule(device, &shader_module_create_info, nil, &shader_module); shader_module_create_err != .SUCCESS {
