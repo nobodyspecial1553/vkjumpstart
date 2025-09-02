@@ -89,7 +89,7 @@ instance_create :: proc(
 
 	vk.load_proc_addresses_global(vkGetInstanceProcAddr_func)
 
-	ensure_result(vk.EnumerateInstanceVersion(&api_version), "Unable to get Instance API Version!")
+	check_result(vk.EnumerateInstanceVersion(&api_version), "Unable to get Instance API Version!") or_return
 	{
 		major, minor, patch := version_extract_major_minor_patch(api_version)
 		log.infof("Vulkan Instance API Version: %v.%v.%v", major, minor, patch)
