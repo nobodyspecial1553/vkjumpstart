@@ -15,11 +15,6 @@ import "core:strings"
 import vk "vendor:vulkan"
 import "vendor:glfw"
 
-/*
-	 TODO:
-	 - Add asserts to devices, instances and the like
-*/
-
 when ODIN_OS == .Linux {
 	VULKAN_LIB_PATH :: "libvulkan.so.1"
 }
