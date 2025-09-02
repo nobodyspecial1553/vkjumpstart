@@ -13,6 +13,7 @@ import "core:dynlib"
 import "core:strings"
 
 import vk "vendor:vulkan"
+import "vendor:glfw"
 
 /*
 	 TODO:
@@ -198,6 +199,90 @@ instance_create :: proc(
 	vk.load_proc_addresses_instance(instance)
 
 	return instance, true
+}
+
+@(require_results)
+surface_create_glfw :: proc(
+	instance: vk.Instance,
+	window_handle: glfw.WindowHandle,
+) -> (
+	surface: vk.SurfaceKHR,
+	ok: bool
+) #optional_ok {
+	check_result(glfw.CreateWindowSurface(instance, window_handle, nil, &surface), "Failed to create GLFW surface!") or_return
+	return surface, true
+}
+
+@(require_results)
+surface_create_wayland :: proc(
+	instance: vk.Instance,
+	display: ^vk.wl_display,
+	wayland_surface: ^vk.wl_surface,
+) -> (
+	surface: vk.SurfaceKHR,
+	ok: bool,
+) #optional_ok {
+	surface_create_info := vk.WaylandSurfaceCreateInfoKHR {
+		sType = .WAYLAND_SURFACE_CREATE_INFO_KHR,
+		display = display,
+		surface = wayland_surface,
+	}
+	check_result(vk.CreateWaylandSurfaceKHR(instance, &surface_create_info, nil, &surface), "Failed to create Wayland surface!") or_return
+	return surface, true
+}
+
+@(require_results)
+surface_create_xcb :: proc(
+	instance: vk.Instance,
+	connection: ^vk.xcb_connection_t,
+	window: vk.xcb_window_t,
+) -> (
+	surface: vk.SurfaceKHR,
+	ok: bool
+) #optional_ok {
+	surface_create_info := vk.XcbSurfaceCreateInfoKHR {
+		sType = .XCB_SURFACE_CREATE_INFO_KHR,
+		connection = connection,
+		window = window,
+	}
+	check_result(vk.CreateXcbSurfaceKHR(instance, &surface_create_info, nil, &surface), "Failed to create XCB surface!") or_return
+	return surface, true
+}
+
+@(require_results)
+surface_create_xlib :: proc(
+	instance: vk.Instance,
+	display: ^vk.XlibDisplay,
+	window: vk.XlibWindow,
+) -> (
+	surface: vk.SurfaceKHR,
+	ok: bool,
+) #optional_ok {
+	surface_create_info := vk.XlibSurfaceCreateInfoKHR {
+		sType = .XLIB_SURFACE_CREATE_INFO_KHR,
+		dpy = display,
+		window = window,
+	}
+	check_result(vk.CreateXlibSurfaceKHR(instance, &surface_create_info, nil, &surface), "Failed to create Xlib surface!") or_return
+	return surface, true
+}
+
+@(require_results)
+surface_create_win32 :: proc(
+	instance: vk.Instance,
+	hinstance: vk.HINSTANCE,
+	hwnd: vk.HWND,
+) -> (
+	surface: vk.SurfaceKHR,
+	ok: bool,
+) #optional_ok {
+	surface_create_info := vk.Win32SurfaceCreateInfoKHR {
+		sType = .WIN32_SURFACE_CREATE_INFO_KHR,
+		hinstance = hinstance,
+		hwnd = hwnd,
+	}
+	check_result(vk.CreateWin32SurfaceKHR(instance, &surface_create_info, nil, &surface), "Failed to create Win32 surface!") or_return
+	return surface, true
 }
 
 Queue_Type :: enum {
