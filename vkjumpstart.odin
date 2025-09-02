@@ -65,9 +65,9 @@ unload_vulkan :: proc(vulkan_lib: dynlib.Library) -> (ok: bool) {
 	return dynlib.unload_library(vulkan_lib)
 }
 
+@(require_results)
 instance_create :: proc(
 	vkGetInstanceProcAddr_func: rawptr,
-	instance: ^vk.Instance,
 	instance_extension_array: []cstring,
 	application_name: cstring = "",
 	application_version: u32 = 0,
@@ -77,8 +77,9 @@ instance_create :: proc(
 	enable_debug_features: bool = ENABLE_DEBUG_FEATURES,
 	temp_allocator := context.temp_allocator,
 ) -> (
+	instance: vk.Instance,
 	ok: bool,
-) {
+) #optional_ok {
 	api_version: u32
 	instance_extension_properties_array: []vk.ExtensionProperties
 
@@ -87,7 +88,6 @@ instance_create :: proc(
 	instance_create_result: vk.Result
 
 	assert(vkGetInstanceProcAddr_func != nil)
-	assert(instance != nil)
 
 	context.temp_allocator = temp_allocator
 
@@ -116,7 +116,7 @@ instance_create :: proc(
 			}
 		}
 		log.errorf("Instance Extension \"%s\" is not supported!", required_instance_extension)
-		return false
+		return instance, false
 	}
 
 	application_info = vk.ApplicationInfo {
@@ -170,7 +170,7 @@ instance_create :: proc(
 				}
 			}
 			log.errorf("Instance Layer \"%s\" is not supported!", required_layer_property)
-			return false
+			return instance, false
 		}
 
 		validation_features = vk.ValidationFeaturesEXT {
@@ -184,20 +184,20 @@ instance_create :: proc(
 		instance_create_info.ppEnabledLayerNames = raw_data(&instance_layer_property_array)
 	}
 
-	instance_create_result = vk.CreateInstance(&instance_create_info, nil, instance)
+	instance_create_result = vk.CreateInstance(&instance_create_info, nil, &instance)
 	#partial switch instance_create_result {
 	case .SUCCESS:
 	case .ERROR_LAYER_NOT_PRESENT:
 		log.error("Instance Layer Not Present!")
-		return false
+		return instance, false
 	case .ERROR_EXTENSION_NOT_PRESENT:
 		log.error("Instance Extension Not Present!")
-		return false
+		return instance, false
 	}
 
-	vk.load_proc_addresses_instance(instance^)
+	vk.load_proc_addresses_instance(instance)
 
-	return true
+	return instance, true
 }
 
 Queue_Type :: enum {
@@ -215,9 +215,8 @@ Queue :: struct {
 
 Queue_Array :: [Queue_Type]Queue
 
+@(require_results)
 device_create :: proc(
-	device: ^vk.Device,
-	queues: ^Queue_Array,
 	physical_device: vk.PhysicalDevice,
 	surface: vk.SurfaceKHR,
 	device_extension_array: []cstring = { vk.KHR_SWAPCHAIN_EXTENSION_NAME },
@@ -225,6 +224,8 @@ device_create :: proc(
 	enable_debug_features: bool = ENABLE_DEBUG_FEATURES,
 	temp_allocator := context.temp_allocator,
 ) -> (
+	device: vk.Device,
+	queue_array: Queue_Array,
 	ok: bool,
 ) {
 	REQUIRED_QUEUE_FAMILY_PROPERTY_FLAGS : vk.QueueFlags : { .GRAPHICS, .COMPUTE, .TRANSFER, .SPARSE_BINDING}
@@ -245,10 +246,10 @@ device_create :: proc(
 
 	device_create_info: vk.DeviceCreateInfo
 
-	assert(device != nil)
-	assert(queues != nil)
-
 	context.temp_allocator = temp_allocator
+
+	assert(physical_device != nil)
+	assert(surface != 0)
 
 	{
 		device_extension_properties_count: u32
@@ -267,7 +268,7 @@ device_create :: proc(
 			}
 		}
 		log.errorf("Device Extension \"%s\" is not supported!")
-		return false
+		return device, queue_array, false
 	}
 
 	vk.GetPhysicalDeviceProperties(physical_device, &physical_device_properties)
@@ -291,11 +292,11 @@ device_create :: proc(
 	}
 	if REQUIRED_QUEUE_FAMILY_PROPERTY_FLAGS > found_flags {
 		log.errorf("Required Queue Family Property Flags: %v - Found Flags: %v", REQUIRED_QUEUE_FAMILY_PROPERTY_FLAGS, found_flags)
-		return false
+		return device, queue_array, false
 	}
 
 	queue_priority_array = f32(1)
-	for &queue in queues^ {
+	for &queue in queue_array {
 		queue.family = QUEUE_FAMILY_INVALID
 	}
 	{
@@ -317,24 +318,24 @@ device_create :: proc(
 			return false
 		}
 
-		find_suitable_queue_family(&queues[.Graphics], queue_family_properties_array, .GRAPHICS) or_return
-		find_suitable_queue_family(&queues[.Compute], queue_family_properties_array, .COMPUTE) or_return
-		find_suitable_queue_family(&queues[.Transfer], queue_family_properties_array, .TRANSFER) or_return
-		find_suitable_queue_family(&queues[.Sparse_Binding], queue_family_properties_array, .SPARSE_BINDING) or_return
+		find_suitable_queue_family(&queue_array[.Graphics], queue_family_properties_array, .GRAPHICS) or_return
+		find_suitable_queue_family(&queue_array[.Compute], queue_family_properties_array, .COMPUTE) or_return
+		find_suitable_queue_family(&queue_array[.Transfer], queue_family_properties_array, .TRANSFER) or_return
+		find_suitable_queue_family(&queue_array[.Sparse_Binding], queue_family_properties_array, .SPARSE_BINDING) or_return
 
 		find_suitable_presentation_queue_family: { // Presentation queue is special case
 			for queue_family_properties, idx in queue_family_properties_array {
 				surface_is_supported: b32
 				if vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, cast(u32)idx, surface, &surface_is_supported) == .SUCCESS && surface_is_supported {
-					queues[.Presentation].family = cast(u32)idx
+					queue_array[.Presentation].family = cast(u32)idx
 					break find_suitable_presentation_queue_family
 				}
 			}
-			if queues[.Presentation].family == QUEUE_FAMILY_INVALID { return false }
+			if queue_array[.Presentation].family == QUEUE_FAMILY_INVALID { return device, queue_array, false }
 		}
 	}
 
-	for queue in queues^ {
+	for queue in queue_array {
 		for &queue_create_info in queue_create_info_array {
 			if queue_create_info.sType != .DEVICE_QUEUE_CREATE_INFO {
 				queue_create_info = vk.DeviceQueueCreateInfo {
@@ -387,22 +388,22 @@ device_create :: proc(
 				}
 			}
 			log.errorf("Device Validation Layer \"%s\" is not supported!", required_device_layer_property)
-			return false
+			return device, queue_array, false
 		}
 
 		device_create_info.enabledLayerCount = len(required_device_layer_property_array)
 		device_create_info.ppEnabledLayerNames = raw_data(&required_device_layer_property_array)
 	}
 
-	check_result(vk.CreateDevice(physical_device, &device_create_info, nil, device), "Failed to create Logical Device!") or_return
+	check_result(vk.CreateDevice(physical_device, &device_create_info, nil, &device), "Failed to create Logical Device!") or_return
 
-	vk.load_proc_addresses_device(device^) // Avoid dispatch logic
+	vk.load_proc_addresses_device(device) // Avoid dispatch logic
 
-	for &queue in queues^ {
-		vk.GetDeviceQueue(device^, queue.family, 0, &queue.handle)
+	for &queue in queue_array {
+		vk.GetDeviceQueue(device, queue.family, 0, &queue.handle)
 	}
 
-	return true
+	return device, queue_array, true
 }
 
 Swapchain :: struct {
