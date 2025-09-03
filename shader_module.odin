@@ -2,7 +2,6 @@ package ns_vkjumpstart_vkjs
 
 @(require) import "core:fmt"
 @(require) import "core:log"
-import "core:mem"
 import "core:io"
 import "core:bufio"
 import "core:slice"
@@ -19,9 +18,7 @@ shader_module_create_from_stream :: proc(
 	shader_module: vk.ShaderModule,
 	ok: bool,
 ) #optional_ok {
-	shader_byte_size: int
 	shader_code_buffer: [dynamic]u32
-	shader_code_buffer_alloc_error: mem.Allocator_Error
 
 	shader_module_create_info: vk.ShaderModuleCreateInfo
 

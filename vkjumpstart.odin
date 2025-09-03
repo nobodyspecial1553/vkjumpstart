@@ -1,14 +1,10 @@
 package ns_vkjumpstart_vkjs
 
 import "base:intrinsics"
-import "base:runtime"
 
-import "core:fmt"
-import "core:log"
-import os "core:os/os2"
-import "core:c"
+@(require) import "core:fmt"
+@(require) import "core:log"
 import "core:mem"
-import "core:slice"
 import "core:dynlib"
 import "core:strings"
 
@@ -404,7 +400,7 @@ device_create :: proc(
 		find_suitable_queue_family(&queue_array[.Sparse_Binding], queue_family_properties_array, .SPARSE_BINDING) or_return
 
 		find_suitable_presentation_queue_family: { // Presentation queue is special case
-			for queue_family_properties, idx in queue_family_properties_array {
+			for _, idx in queue_family_properties_array {
 				surface_is_supported: b32
 				if vk.GetPhysicalDeviceSurfaceSupportKHR(physical_device, cast(u32)idx, surface, &surface_is_supported) == .SUCCESS && surface_is_supported {
 					queue_array[.Presentation].family = cast(u32)idx

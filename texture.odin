@@ -1,9 +1,7 @@
 package ns_vkjumpstart_vkjs
 
-import "core:log"
-import "core:fmt"
-import "core:mem"
-import "core:slice"
+@(require) import "core:log"
+@(require) import "core:fmt"
 
 import vk "vendor:vulkan"
 

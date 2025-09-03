@@ -4,7 +4,6 @@ import "base:runtime"
 
 @(require) import "core:fmt"
 @(require) import "core:log"
-import "core:slice"
 
 import vk "vendor:vulkan"
 
