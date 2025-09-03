@@ -202,7 +202,7 @@ surface_create_glfw :: proc(
 	window_handle: glfw.WindowHandle,
 ) -> (
 	surface: vk.SurfaceKHR,
-	ok: bool
+	ok: bool,
 ) #optional_ok {
 	check_result(glfw.CreateWindowSurface(instance, window_handle, nil, &surface), "Failed to create GLFW surface!") or_return
 	return surface, true
@@ -233,7 +233,7 @@ surface_create_xcb :: proc(
 	window: vk.xcb_window_t,
 ) -> (
 	surface: vk.SurfaceKHR,
-	ok: bool
+	ok: bool,
 ) #optional_ok {
 	surface_create_info := vk.XcbSurfaceCreateInfoKHR {
 		sType = .XCB_SURFACE_CREATE_INFO_KHR,
