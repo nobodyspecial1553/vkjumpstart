@@ -808,14 +808,3 @@ format_has_stencil_component :: #force_inline proc "contextless" (format: vk.For
 		return false
 	}
 }
-
-get_memory_type_index :: proc(type_bits: u32, requested_properties: vk.MemoryPropertyFlags, memory_properties: vk.PhysicalDeviceMemoryProperties) -> (u32, bool) #optional_ok {
-	type_bits := type_bits
-	for i: u32 = 0; i < memory_properties.memoryTypeCount; i += 1 {
-		if (type_bits & 1) == 1 && (memory_properties.memoryTypes[i].propertyFlags & requested_properties) == requested_properties {
-			return i, true
-		}
-		type_bits >>= 1
-	}
-	return max(u32), false
-}
