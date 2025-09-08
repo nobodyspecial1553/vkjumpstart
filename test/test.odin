@@ -175,5 +175,14 @@ test :: proc(t: ^testing.T) {
 
 	// Heap
 	heap: vkjs.Heap
+	heap_allocator: vkjs.Device_Allocator
 	vkjs.heap_init(&heap, physical_device, device)
+	heap_allocator = vkjs.heap_allocator(&heap)
+
+	memory, offset, device_alloc_error := heap_allocator.procedure(&heap, .Alloc, 1024, 64, 0b1, { .DEVICE_LOCAL }, true, 0, 0)
+	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
+	memory, offset, device_alloc_error = heap_allocator.procedure(&heap, .Alloc, 4096, 2048, 0b1, { .DEVICE_LOCAL }, true, 0, 0)
+	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
+	memory, offset, device_alloc_error = heap_allocator.procedure(&heap, .Alloc, mem.Megabyte * 128 * 3, 2048, 0b1, { .DEVICE_LOCAL }, true, 0, 0)
+	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
 }
