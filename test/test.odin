@@ -37,6 +37,7 @@ test :: proc(t: ^testing.T) {
 	dynamic_arena: mem.Dynamic_Arena
 	dynamic_arena_allocator: mem.Allocator
 	mem.dynamic_arena_init(&dynamic_arena)
+	defer mem.dynamic_arena_destroy(&dynamic_arena)
 	dynamic_arena_allocator = mem.dynamic_arena_allocator(&dynamic_arena)
 
 	window: glfw.WindowHandle
@@ -47,9 +48,11 @@ test :: proc(t: ^testing.T) {
 		log.error("Failed to initialize GLFW")
 		testing.fail(t)
 	}
+	defer glfw.Terminate()
 
 	glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
 	window = glfw.CreateWindow(cast(i32)width, cast(i32)height, "Test Window", nil, nil)
+	defer glfw.DestroyWindow(window)
 	if window == nil {
 		log.error("Failed to create window!")
 		testing.fail(t)
@@ -61,16 +64,19 @@ test :: proc(t: ^testing.T) {
 		log.error("Failed to load vulkan library!")
 		testing.fail(t)
 	}
+	defer vkjs.unload_vulkan(vulkan_lib)
 
 	if instance, instance_create_ok = vkjs.instance_create(vkGetInstanceProcAddr_func, instance_extension_array); instance_create_ok == false {
 		log.error("Failed to create instance!")
 		testing.fail(t)
 	}
+	defer vk.DestroyInstance(instance, nil)
 
 	if surface, surface_create_ok = vkjs.surface_create_glfw(instance, window); !surface_create_ok {
 		log.error("Failed to create surface!")
 		testing.fail(t)
 	}
+	defer vk.DestroySurfaceKHR(instance, surface, nil)
 
 	if physical_device, find_optimal_physical_device_ok = vkjs.find_optimal_physical_device(instance); find_optimal_physical_device_ok == false {
 		log.error("Failed to find optimal physical device!")
@@ -167,22 +173,38 @@ test :: proc(t: ^testing.T) {
 			testing.fail(t)
 		}
 	}
+	defer {
+		vk.DeviceWaitIdle(device)
+		vk.DestroyDevice(device, nil)
+	}
 
 	if swapchain, swapchain_create_ok = vkjs.swapchain_create({ cast(u32)width, cast(u32)height }, 3, physical_device, device, surface, queue_array, allocator = dynamic_arena_allocator); swapchain_create_ok == false {
 		log.error("Failed to create swapchain!")
 		testing.fail(t)
 	}
+	defer vkjs.swapchain_destroy(swapchain, device)
 
 	// Heap
 	heap: vkjs.Heap
 	heap_allocator: vkjs.Device_Allocator
 	vkjs.heap_init(&heap, physical_device, device)
+	defer vkjs.heap_destroy(&heap)
 	heap_allocator = vkjs.heap_allocator(&heap)
 
-	memory, offset, device_alloc_error := heap_allocator.procedure(&heap, .Alloc, 1024, 64, 0b1, { .DEVICE_LOCAL }, true, 0, 0)
+	memory, offset, device_alloc_error := vkjs.device_memory_alloc(1024, 64, 0b1, { .DEVICE_LOCAL }, true, heap_allocator)
 	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
-	memory, offset, device_alloc_error = heap_allocator.procedure(&heap, .Alloc, 4096, 2048, 0b1, { .DEVICE_LOCAL }, true, 0, 0)
+
+	memory, offset, device_alloc_error = vkjs.device_memory_alloc(1024, 4096, 0b1, { .DEVICE_LOCAL }, true, heap_allocator)
 	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
-	memory, offset, device_alloc_error = heap_allocator.procedure(&heap, .Alloc, mem.Megabyte * 128 * 3, 2048, 0b1, { .DEVICE_LOCAL }, true, 0, 0)
+
+	device_alloc_error = vkjs.device_memory_free(memory, offset, heap_allocator)
+
+	memory, offset, device_alloc_error = vkjs.device_memory_alloc(1024, 64, 0b1, { .DEVICE_LOCAL }, true, heap_allocator)
+	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
+
+	memory, offset, device_alloc_error = vkjs.device_memory_alloc(1024, 64, 0b1, { .DEVICE_LOCAL }, true, heap_allocator)
+	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
+
+	memory, offset, device_alloc_error = vkjs.device_memory_alloc(mem.Megabyte * 128 * 3, 64, 0b1, { .DEVICE_LOCAL }, true, heap_allocator)
 	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
 }

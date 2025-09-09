@@ -492,6 +492,8 @@ Swapchain :: struct {
 }
 
 swapchain_destroy :: proc(swapchain: Swapchain, device: vk.Device) {
+	context.allocator = swapchain.allocator
+
 	vk.DeviceWaitIdle(device)
 
 	if swapchain.view_array != nil {
