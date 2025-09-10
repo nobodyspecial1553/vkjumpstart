@@ -4,109 +4,115 @@ import "base:runtime"
 
 @(require) import "core:fmt"
 @(require) import "core:log"
+import "core:mem"
 
 import vk "vendor:vulkan"
 
-/*
-	 Batch creates all the buffers and binds them all to one single DeviceMemory
-	 All the buffers will share the same memory properties defined by `memory_property_flags`
+Buffer :: struct {
+	handle: vk.Buffer,
+	memory: vk.DeviceMemory,
+	memory_offset: vk.DeviceSize,
+	device_allocator: Device_Allocator,
+}
 
-	 Returns the buffers through `buffers_out`
-	 Returns the memory via the returns: `memory`
-*/
 @(require_results)
 buffer_create :: proc(
 	device: vk.Device,
 	physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties,
-	buffer_create_info_array: []vk.BufferCreateInfo,
+	buffer_create_info: vk.BufferCreateInfo,
 	memory_property_flags: vk.MemoryPropertyFlags,
-	buffers_out: []vk.Buffer,
+	buffer_array_out: []Buffer,
+	device_allocator: Device_Allocator,
 ) -> (
-	memory: vk.DeviceMemory,
-	ok: bool,
+	error: Error,
 ) {
-	destroy_buffers :: proc(device: vk.Device, buffers: []vk.Buffer, #any_int end := max(int)) {
-		for buffer, idx in buffers {
+	destroy_buffers :: proc(device: vk.Device, buffer_array: []Buffer, #any_int end := max(int)) {
+		for buffer, idx in buffer_array {
 			if idx == end { break }
-			vk.DestroyBuffer(device, buffer, nil)
+			vk.DestroyBuffer(device, buffer.handle, nil)
 		}
 	}
 
-	assert(len(buffers_out) > 0)
-	assert(len(buffer_create_info_array) == len(buffers_out))
+	device_memory: vk.DeviceMemory
+	device_memory_offset: vk.DeviceSize
+	memory_requirements: vk.MemoryRequirements
+
+	buffer_create_info := buffer_create_info
+
+	assert(len(buffer_array_out) > 0)
 
 	// Create buffers
-	#no_bounds_check for &buffer_out, idx in buffers_out {
-		buffer_create_info := &buffer_create_info_array[idx]
-		buffer_create_info.sType = .BUFFER_CREATE_INFO
-		if check_result(vk.CreateBuffer(device, buffer_create_info, nil, &buffer_out)) == false {
+	buffer_create_info.sType = .BUFFER_CREATE_INFO
+	#no_bounds_check for &buffer_out, idx in buffer_array_out {
+		create_buffer_error: vk.Result
+
+		create_buffer_error = vk.CreateBuffer(device, &buffer_create_info, nil, &buffer_out.handle)
+
+		if check_result(vk.CreateBuffer(device, &buffer_create_info, nil, &buffer_out.handle)) == false {
 			log.errorf("Failed to create buffer '%v' [" + #procedure + "]", idx)
-			destroy_buffers(device, buffers_out, idx)
-			return 0, false
+			destroy_buffers(device, buffer_array_out, idx)
+			return create_buffer_error
 		}
+
+		buffer_out.device_allocator = device_allocator
 	}
 
 	// Allocate Memory
 	{
-		memory_allocate_info: vk.MemoryAllocateInfo
-		memory_alloc_size: int
-		memory_type_bits: u32
-		memory_type_index: u32
+		memory_alloc_size: vk.DeviceSize
+		device_allocator_error: Allocator_Error
 
-		for buffer in buffers_out {
-			memory_requirements: vk.MemoryRequirements
+		vk.GetBufferMemoryRequirements(device, buffer_array_out[0].handle, &memory_requirements)
 
-			vk.GetBufferMemoryRequirements(device, buffer, &memory_requirements)
-			/*
-				 It should be noted I have no idea if there is a legal or-ing of 'memoryTypeBits'
-				 I have done it before and it failed, but it may just have been a bad combo
-				 I'm going to keep or-ing it in case it is legal
-				 This way someone who knows better can leverage that
-				 And if it isn't legal ever, then it will fail anyways
-			*/
-			memory_type_bits |= memory_requirements.memoryTypeBits
-			memory_alloc_size += runtime.align_forward_int(memory_alloc_size, cast(int)memory_requirements.alignment)
-			memory_alloc_size += cast(int)memory_requirements.size
-		}
+		memory_alloc_size = memory_requirements.size
+		memory_alloc_size = cast(vk.DeviceSize)runtime.align_forward_uint(cast(uint)memory_alloc_size, cast(uint)memory_requirements.alignment)
+		memory_alloc_size *= cast(vk.DeviceSize)len(buffer_array_out)
 
-		memory_type_index = get_memory_type_index(memory_type_bits, memory_property_flags, physical_device_memory_properties)
-		if memory_type_index == max(u32) {
-			log.error("Failed to find valid memory type index for buffer memory! [" + #procedure + "]")
-			destroy_buffers(device, buffers_out)
-			return 0, false
-		}
+		device_memory, device_memory_offset, device_allocator_error = device_alloc(memory_alloc_size, memory_requirements.alignment, memory_requirements.memoryTypeBits, memory_property_flags, true, device_allocator)
+		if device_allocator_error != nil {
+			log.errorf("Buffer memory allocator error: %v", device_allocator_error)
+			destroy_buffers(device, buffer_array_out)
 
-		memory_allocate_info = vk.MemoryAllocateInfo {
-			sType = .MEMORY_ALLOCATE_INFO,
-			allocationSize = cast(vk.DeviceSize)memory_alloc_size,
-			memoryTypeIndex = memory_type_index,
-		}
-		if check_result(vk.AllocateMemory(device, &memory_allocate_info, nil, &memory), "Failed to allocate memory for buffers! [" + #procedure + "]") == false {
-			destroy_buffers(device, buffers_out)
+			switch variant in device_allocator_error {
+			case Device_Allocator_Error:
+				return variant
+			case mem.Allocator_Error:
+				return variant
+			}
 		}
 	}
 
 	// Bind buffers to memory
 	{
-		buffer_offset: int
+		buffer_offset: vk.DeviceSize
 
-		for buffer, idx in buffers_out {
-			memory_requirements: vk.MemoryRequirements
+		buffer_offset = device_memory_offset
 
-			vk.GetBufferMemoryRequirements(device, buffer, &memory_requirements)
-			buffer_offset += runtime.align_forward_int(buffer_offset, cast(int)memory_requirements.alignment)
+		for buffer, idx in buffer_array_out {
+			bind_buffer_memory_error: vk.Result
 
-			if check_result(vk.BindBufferMemory(device, buffer, memory, memoryOffset = cast(vk.DeviceSize)buffer_offset)) == false {
+			bind_buffer_memory_error = vk.BindBufferMemory(device, buffer.handle, device_memory, memoryOffset = buffer_offset)
+			if check_result(bind_buffer_memory_error) == false {
 				log.errorf("Failed to bind buffer '%v' to memory!", idx)
 
-				vk.FreeMemory(device, memory, nil)
-				destroy_buffers(device, buffers_out)
+				vk.FreeMemory(device, device_memory, nil)
+				destroy_buffers(device, buffer_array_out)
 
-				return 0, false
+				return bind_buffer_memory_error
 			}
-			buffer_offset += cast(int)memory_requirements.size
+			buffer_offset += memory_requirements.size
+			buffer_offset += cast(vk.DeviceSize)runtime.align_forward_uint(cast(uint)buffer_offset, cast(uint)memory_requirements.alignment)
 		}
 	}
 
-	return memory, true
+	return nil
+}
+
+buffer_destroy :: proc(device: vk.Device, buffer: Buffer) {
+	assert(device != nil)
+
+	if buffer.handle != 0 {
+		vk.DestroyBuffer(device, buffer.handle, nil)
+	}
+	device_free(buffer.memory, buffer.memory_offset, buffer.device_allocator)
 }

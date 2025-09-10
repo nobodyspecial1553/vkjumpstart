@@ -2,8 +2,15 @@ package ns_vkjumpstart_vkjs
 
 @(require) import "core:fmt"
 @(require) import "core:log"
+import "core:mem"
 
 import vk "vendor:vulkan"
+
+Error :: union #shared_nil {
+	vk.Result,
+	Device_Allocator_Error,
+	mem.Allocator_Error,
+}
 
 /*
 	 `check_result,` `assert_result` and `ensure_result` only exist for a broad, general case

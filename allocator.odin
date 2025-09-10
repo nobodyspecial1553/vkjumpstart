@@ -39,7 +39,8 @@ Device_Allocator :: struct {
 	data: rawptr,
 }
 
-device_memory_alloc :: proc(
+@(require_results)
+device_alloc :: proc(
 	size: vk.DeviceSize,
 	alignment: vk.DeviceSize,
 	memory_type_bits: u32,
@@ -63,7 +64,7 @@ device_memory_alloc :: proc(
 	return device_allocator.procedure(device_allocator.data, .Alloc, size, alignment, memory_type_bits, memory_property_flags, is_linear_resource, 0, 0, location)
 }
 
-device_memory_free :: proc(
+device_free :: proc(
 	memory: vk.DeviceMemory,
 	memory_offset: vk.DeviceSize,
 	device_allocator: Device_Allocator,
@@ -78,7 +79,7 @@ device_memory_free :: proc(
 	return allocator_error
 }
 
-device_memory_free_all :: proc(
+device_free_all :: proc(
 	memory: vk.DeviceMemory,
 	device_allocator: Device_Allocator,
 	location := #caller_location,

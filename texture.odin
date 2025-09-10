@@ -2,6 +2,7 @@ package ns_vkjumpstart_vkjs
 
 @(require) import "core:log"
 @(require) import "core:fmt"
+import "core:mem"
 
 import vk "vendor:vulkan"
 
@@ -17,6 +18,8 @@ Texture :: struct {
 	// Data
 	image: vk.Image,
 	memory: vk.DeviceMemory,
+	memory_offset: vk.DeviceSize,
+	device_allocator: Device_Allocator,
 	/*
 		 The 'views' member only exists as a convenience.
 		 No "vkjumpstart" procedure will populate it.
@@ -31,17 +34,17 @@ texture_create :: proc(
 	device: vk.Device,
 	physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties, 
 	image_create_info: vk.ImageCreateInfo,
+	device_allocator: Device_Allocator,
 	image_view_create_infos: []vk.ImageViewCreateInfo = nil,
 	image_views_out: []vk.ImageView = nil,
 ) -> (
 	texture: Texture,
-	ok: bool,
+	error: Error,
 ) {
-	image_create_info := image_create_info
-
+	allocator_error: Allocator_Error
 	memory_requirements: vk.MemoryRequirements
-	memory_type_index: u32
-	memory_allocate_info: vk.MemoryAllocateInfo
+
+	image_create_info := image_create_info
 
 	assert(device != nil)
 
@@ -52,34 +55,45 @@ texture_create :: proc(
 	texture.array_layers = image_create_info.arrayLayers
 	texture.samples = image_create_info.samples
 	texture.usage = image_create_info.usage
+	texture.device_allocator = device_allocator
 
 	// Create the image
 	image_create_info.sType = .IMAGE_CREATE_INFO // Don't need to set yourself :)
-	check_result(vk.CreateImage(device, &image_create_info, nil, &texture.image), "Unable to create image for texture! [" + #procedure + "]") or_return
+	error = vk.CreateImage(device, &image_create_info, nil, &texture.image)
+	if check_result(error.(vk.Result)) == false {
+		log.error("Unable to create image for texture [" + #procedure + "]")
+		return {}, error
+	}
 
 	// Allocate memory for image
 	vk.GetImageMemoryRequirements(device, texture.image, &memory_requirements)
-	memory_type_index = get_memory_type_index(memory_requirements.memoryTypeBits, { .DEVICE_LOCAL }, physical_device_memory_properties)
-	if memory_type_index == max(u32) {
-		log.error("Failed to find valid memory heap! [" + #procedure + "]")
-		return texture, false
+	texture.memory, texture.memory_offset, allocator_error = device_alloc(memory_requirements.size, memory_requirements.alignment, memory_requirements.memoryTypeBits, { .DEVICE_LOCAL }, false, device_allocator)
+	switch variant in allocator_error {
+	case Device_Allocator_Error:
+		vk.DestroyImage(device, texture.image, nil)
+		return {}, variant
+	case mem.Allocator_Error:
+		vk.DestroyImage(device, texture.image, nil)
+		return {}, variant
 	}
-
-	memory_allocate_info = vk.MemoryAllocateInfo {
-		sType = .MEMORY_ALLOCATE_INFO,
-		allocationSize = memory_requirements.size,
-		memoryTypeIndex = memory_type_index,
-	}
-	check_result(vk.AllocateMemory(device, &memory_allocate_info, nil, &texture.memory), "Unable to allocate memory for texture! [" + #procedure + "]") or_return
 
 	// Bind memory to image
-	check_result(vk.BindImageMemory(device, texture.image, texture.memory, memoryOffset=0), "Unable to bind memory to image for texture! [" + #procedure + "]") or_return
+	error = vk.BindImageMemory(device, texture.image, texture.memory, memoryOffset=texture.memory_offset)
+	if check_result(error.(vk.Result)) == false {
+		log.error("Unable to bind memory to image for texture! [" + #procedure + "]")
+		vk.DestroyImage(device, texture.image, nil)
+		device_free(texture.memory, texture.memory_offset, device_allocator)
+		return {}, error
+	}
 
 	// Create views (if applicable)
-	if len(image_views_out) == 0 || len(image_view_create_infos) == 0 { return texture, true }
+	if len(image_views_out) == 0 || len(image_view_create_infos) == 0 { return texture, Device_Allocator_Error.Unknown }
 
-	assert(len(image_views_out) == len(image_view_create_infos))
-	ensure(len(image_views_out) <= len(image_view_create_infos))
+	if len(image_views_out) > len(image_view_create_infos) {
+		vk.DestroyImage(device, texture.image, nil)
+		device_free(texture.memory, texture.memory_offset, device_allocator)
+		return {}, Device_Allocator_Error.Unknown
+	}
 	for &view, idx in image_views_out {
 		image_view_create_info := image_view_create_infos[idx]
 
@@ -91,23 +105,21 @@ texture_create :: proc(
 			texture.views = image_views_out
 			texture_destroy(device, texture)
 
-			return texture, false
+			return texture, Device_Allocator_Error.Unknown
 		}
 	}
 
-	return texture, true
+	return texture, nil
 }
 
 texture_destroy :: proc(device: vk.Device, texture: Texture) {
 	if texture.image != 0 {
 		vk.DestroyImage(device, texture.image, nil)
 	}
-	if texture.memory != 0 {
-		vk.FreeMemory(device, texture.memory, nil)
-	}
 	if texture.views != nil {
 		texture_destroy_views(device, texture.views)
 	}
+	device_free(texture.memory, texture.memory_offset, texture.device_allocator)
 }
 
 texture_destroy_views :: proc(device: vk.Device, views: []vk.ImageView) {
