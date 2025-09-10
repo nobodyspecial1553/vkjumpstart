@@ -32,7 +32,7 @@ Texture :: struct {
 @(require_results)
 texture_create :: proc(
 	device: vk.Device,
-	physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties, 
+	physical_device: vk.PhysicalDevice,
 	image_create_info: vk.ImageCreateInfo,
 	device_allocator: Device_Allocator,
 	image_view_create_infos: []vk.ImageViewCreateInfo = nil,
@@ -43,10 +43,14 @@ texture_create :: proc(
 ) {
 	allocator_error: Allocator_Error
 	memory_requirements: vk.MemoryRequirements
+	physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties
+	linear_tiling: bool
 
 	image_create_info := image_create_info
 
 	assert(device != nil)
+
+	vk.GetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties)
 
 	// Copy Metadata
 	texture.extent = image_create_info.extent
@@ -60,14 +64,17 @@ texture_create :: proc(
 	// Create the image
 	image_create_info.sType = .IMAGE_CREATE_INFO // Don't need to set yourself :)
 	error = vk.CreateImage(device, &image_create_info, nil, &texture.image)
-	if check_result(error.(vk.Result)) == false {
+	if error != nil {
 		log.error("Unable to create image for texture [" + #procedure + "]")
 		return {}, error
 	}
 
 	// Allocate memory for image
+	linear_tiling = true if image_create_info.tiling == .LINEAR else false
+
 	vk.GetImageMemoryRequirements(device, texture.image, &memory_requirements)
-	texture.memory, texture.memory_offset, allocator_error = device_alloc(memory_requirements.size, memory_requirements.alignment, memory_requirements.memoryTypeBits, { .DEVICE_LOCAL }, false, device_allocator)
+
+	texture.memory, texture.memory_offset, allocator_error = device_alloc(memory_requirements.size, memory_requirements.alignment, memory_requirements.memoryTypeBits, { .DEVICE_LOCAL }, linear_tiling, device_allocator)
 	switch variant in allocator_error {
 	case Device_Allocator_Error:
 		vk.DestroyImage(device, texture.image, nil)
@@ -79,7 +86,7 @@ texture_create :: proc(
 
 	// Bind memory to image
 	error = vk.BindImageMemory(device, texture.image, texture.memory, memoryOffset=texture.memory_offset)
-	if check_result(error.(vk.Result)) == false {
+	if error != nil {
 		log.error("Unable to bind memory to image for texture! [" + #procedure + "]")
 		vk.DestroyImage(device, texture.image, nil)
 		device_free(texture.memory, texture.memory_offset, device_allocator)
@@ -87,7 +94,7 @@ texture_create :: proc(
 	}
 
 	// Create views (if applicable)
-	if len(image_views_out) == 0 || len(image_view_create_infos) == 0 { return texture, Device_Allocator_Error.Unknown }
+	if len(image_views_out) == 0 || len(image_view_create_infos) == 0 { return texture, nil }
 
 	if len(image_views_out) > len(image_view_create_infos) {
 		vk.DestroyImage(device, texture.image, nil)

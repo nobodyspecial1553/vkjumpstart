@@ -18,7 +18,7 @@ Buffer :: struct {
 @(require_results)
 buffer_create :: proc(
 	device: vk.Device,
-	physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties,
+	physical_device: vk.PhysicalDevice,
 	buffer_create_info: vk.BufferCreateInfo,
 	memory_property_flags: vk.MemoryPropertyFlags,
 	buffer_array_out: []Buffer,
@@ -36,10 +36,13 @@ buffer_create :: proc(
 	device_memory: vk.DeviceMemory
 	device_memory_offset: vk.DeviceSize
 	memory_requirements: vk.MemoryRequirements
+	physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties
 
 	buffer_create_info := buffer_create_info
 
 	assert(len(buffer_array_out) > 0)
+
+	vk.GetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties)
 
 	// Create buffers
 	buffer_create_info.sType = .BUFFER_CREATE_INFO
@@ -88,8 +91,11 @@ buffer_create :: proc(
 
 		buffer_offset = device_memory_offset
 
-		for buffer, idx in buffer_array_out {
+		for &buffer, idx in buffer_array_out {
 			bind_buffer_memory_error: vk.Result
+
+			buffer.memory = device_memory
+			buffer.memory_offset = buffer_offset
 
 			bind_buffer_memory_error = vk.BindBufferMemory(device, buffer.handle, device_memory, memoryOffset = buffer_offset)
 			if check_result(bind_buffer_memory_error) == false {

@@ -5,6 +5,7 @@ package ns_vkjumpstart_test
 @(require) import "core:testing"
 import "core:mem"
 import "core:dynlib"
+import "core:slice"
 
 import vk "vendor:vulkan"
 import "vendor:glfw"
@@ -191,20 +192,36 @@ test :: proc(t: ^testing.T) {
 	defer vkjs.heap_destroy(&heap)
 	heap_allocator = vkjs.heap_allocator(&heap)
 
-	memory, offset, device_alloc_error := vkjs.device_memory_alloc(1024, 64, 0b1, { .DEVICE_LOCAL }, true, heap_allocator)
-	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
+	buffer: vkjs.Buffer
+	buffer_create_info := vk.BufferCreateInfo {
+		sType = .BUFFER_CREATE_INFO,
+		size = 1024,
+		usage = { .VERTEX_BUFFER, .TRANSFER_DST },
+	}
+	buffer_create_error := vkjs.buffer_create(device, physical_device, buffer_create_info, { .HOST_VISIBLE, .HOST_CACHED }, slice.from_ptr(&buffer, 1), heap_allocator)
+	if buffer_create_error != nil {
+		fmt.eprintfln("Failed to create buffer: %v", buffer_create_error)
+		testing.fail(t)
+	}
+	defer vkjs.buffer_destroy(device, buffer)
+	fmt.printfln("Buffer Memory: %v - Offset: %v", buffer.memory, buffer.memory_offset)
 
-	memory, offset, device_alloc_error = vkjs.device_memory_alloc(1024, 4096, 0b1, { .DEVICE_LOCAL }, true, heap_allocator)
-	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
-
-	device_alloc_error = vkjs.device_memory_free(memory, offset, heap_allocator)
-
-	memory, offset, device_alloc_error = vkjs.device_memory_alloc(1024, 64, 0b1, { .DEVICE_LOCAL }, true, heap_allocator)
-	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
-
-	memory, offset, device_alloc_error = vkjs.device_memory_alloc(1024, 64, 0b1, { .DEVICE_LOCAL }, true, heap_allocator)
-	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
-
-	memory, offset, device_alloc_error = vkjs.device_memory_alloc(mem.Megabyte * 128 * 3, 64, 0b1, { .DEVICE_LOCAL }, true, heap_allocator)
-	fmt.printfln("Memory: %v - Offset: %v", memory, offset)
+	image_create_info := vk.ImageCreateInfo {
+		sType = .IMAGE_CREATE_INFO,
+		imageType = .D2,
+		format = .R8G8B8A8_UNORM,
+		extent = { 64, 64, 1 },
+		mipLevels = 1,
+		arrayLayers = 1,
+		tiling = .OPTIMAL,
+		usage = { .COLOR_ATTACHMENT, .TRANSFER_DST },
+		initialLayout = .UNDEFINED,
+	}
+	texture, texture_create_error := vkjs.texture_create(device, physical_device, image_create_info, heap_allocator)
+	if texture_create_error != nil {
+		fmt.eprintfln("Failed to create texture: %v", texture_create_error)
+		testing.fail(t)
+	}
+	defer vkjs.texture_destroy(device, texture)
+	fmt.printfln("Texture Memory: %v - Offset: %v", texture.memory, texture.memory_offset)
 }
