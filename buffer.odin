@@ -12,6 +12,8 @@ Buffer :: struct {
 	handle: vk.Buffer,
 	memory: vk.DeviceMemory,
 	memory_offset: vk.DeviceSize,
+	size: vk.DeviceSize,
+	address: vk.DeviceAddress,
 	device_allocator: Device_Allocator,
 }
 
@@ -57,6 +59,7 @@ buffer_create :: proc(
 			return create_buffer_error
 		}
 
+		buffer_out.size = buffer_create_info.size
 		buffer_out.device_allocator = device_allocator
 	}
 
@@ -106,6 +109,17 @@ buffer_create :: proc(
 
 				return bind_buffer_memory_error
 			}
+
+			if .SHADER_DEVICE_ADDRESS in buffer_create_info.usage {
+				buffer_device_address_info: vk.BufferDeviceAddressInfo
+
+				buffer_device_address_info = {
+					sType = .BUFFER_DEVICE_ADDRESS_INFO_EXT,
+					buffer = buffer.handle,
+				}
+				buffer.address = vk.GetBufferDeviceAddress(device, &buffer_device_address_info)
+			}
+
 			buffer_offset += memory_requirements.size
 			buffer_offset += cast(vk.DeviceSize)runtime.align_forward_uint(cast(uint)buffer_offset, cast(uint)memory_requirements.alignment)
 		}

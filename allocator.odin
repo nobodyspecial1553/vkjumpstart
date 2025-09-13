@@ -11,6 +11,7 @@ Device_Allocator_Mode :: enum {
 	Free,
 	Free_All, // If anyone implements an Arena (or if I do)
 	// Resize, // No reasonable way to copy agnostically (THAT I KNOW OF! LOL)
+	Map,
 }
 
 Device_Allocator_Error :: enum {
@@ -23,6 +24,8 @@ Device_Allocator_Error :: enum {
 	Out_Of_Device_Memory,
 	Out_Of_Host_Memory,
 	Memory_Map_Failed,
+	Unmappable_Memory,
+	Map_Out_Of_Bounds,
 	Bad_Free,
 	Mode_Not_Implemented,
 }
@@ -32,7 +35,7 @@ Allocator_Error :: union #shared_nil {
 	mem.Allocator_Error,
 }
 
-Device_Allocator_Proc :: #type proc(data: rawptr, mode: Device_Allocator_Mode, size, alignment: vk.DeviceSize, memory_type_bits: u32, memory_property_flags: vk.MemoryPropertyFlags, is_linear_resource: bool, old_memory: vk.DeviceMemory, old_memory_offset: vk.DeviceSize, location := #caller_location) -> (memory: vk.DeviceMemory, memory_offset: vk.DeviceSize, allocator_error: Allocator_Error)
+Device_Allocator_Proc :: #type proc(data: rawptr, mode: Device_Allocator_Mode, size, alignment: vk.DeviceSize, memory_type_bits: u32, memory_property_flags: vk.MemoryPropertyFlags, is_linear_resource: bool, memory_in: vk.DeviceMemory, memory_offset_in: vk.DeviceSize, location := #caller_location) -> (memory: vk.DeviceMemory, memory_offset: vk.DeviceSize, memory_ptr: rawptr, allocator_error: Allocator_Error)
 
 Device_Allocator :: struct {
 	procedure: Device_Allocator_Proc,
@@ -61,7 +64,8 @@ device_alloc :: proc(
 	if device_allocator.procedure == nil {
 		return 0, 0, Device_Allocator_Error.Invalid_Device_Allocator
 	}
-	return device_allocator.procedure(device_allocator.data, .Alloc, size, alignment, memory_type_bits, memory_property_flags, is_linear_resource, 0, 0, location)
+	memory, memory_offset, _, allocator_error = device_allocator.procedure(device_allocator.data, .Alloc, size, alignment, memory_type_bits, memory_property_flags, is_linear_resource, 0, 0, location)
+	return
 }
 
 device_free :: proc(
@@ -75,7 +79,7 @@ device_free :: proc(
 	if device_allocator.procedure == nil {
 		return Device_Allocator_Error.Invalid_Device_Allocator
 	}
-	_, _, allocator_error = device_allocator.procedure(device_allocator.data, .Free, 0, 0, 0, {}, false, memory, memory_offset, location)
+	_, _, _, allocator_error = device_allocator.procedure(device_allocator.data, .Free, 0, 0, 0, {}, false, memory, memory_offset, location)
 	return allocator_error
 }
 
@@ -89,8 +93,24 @@ device_free_all :: proc(
 	if device_allocator.procedure == nil {
 		return Device_Allocator_Error.Invalid_Device_Allocator
 	}
-	_, _, allocator_error = device_allocator.procedure(device_allocator.data, .Free_All, 0, 0, 0, {}, false, memory, 0, location)
+	_, _, _, allocator_error = device_allocator.procedure(device_allocator.data, .Free_All, 0, 0, 0, {}, false, memory, 0, location)
 	return allocator_error
+}
+
+device_map :: proc(
+	memory: vk.DeviceMemory,
+	memory_offset: vk.DeviceSize,
+	device_allocator: Device_Allocator,
+	location := #caller_location,
+) -> (
+	memory_ptr: rawptr,
+	allocator_error: Allocator_Error,
+) {
+	if device_allocator.procedure == nil {
+		return nil, Device_Allocator_Error.Invalid_Device_Allocator
+	}
+	_, _, memory_ptr, allocator_error = device_allocator.procedure(device_allocator.data, .Map, 0, 0, 0, {}, true, memory, memory_offset, location)
+	return
 }
 
 Heap_Suballocation :: struct {
@@ -208,6 +228,7 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 ) -> (
 	memory: vk.DeviceMemory,
 	memory_offset: vk.DeviceSize,
+	memory_ptr: rawptr,
 	allocator_error: Allocator_Error,
 ) {
 	heap: ^Heap
@@ -229,7 +250,7 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 
 
 		if memory_type_index == max(u32) {
-			return 0, 0, Device_Allocator_Error.No_Valid_Heap
+			return 0, 0, nil, Device_Allocator_Error.No_Valid_Heap
 		}
 
 		for device_memory, &heap_allocation in heap.allocations {
@@ -277,7 +298,7 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 				}
 				append(&heap_allocation.allocation_array, new_suballocation) or_return
 
-				return device_memory, new_suballocation.offset, nil
+				return device_memory, new_suballocation.offset, nil, nil
 			}
 		}
 		// Could not find any free memory
@@ -306,11 +327,11 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 			case .SUCCESS:
 				break
 			case .ERROR_OUT_OF_DEVICE_MEMORY:
-				return 0, 0, Device_Allocator_Error.Out_Of_Device_Memory
+				return 0, 0, nil, Device_Allocator_Error.Out_Of_Device_Memory
 			case .ERROR_OUT_OF_HOST_MEMORY:
-				return 0, 0, Device_Allocator_Error.Out_Of_Host_Memory
+				return 0, 0, nil, Device_Allocator_Error.Out_Of_Host_Memory
 			case:
-				return 0, 0, Device_Allocator_Error.Unknown
+				return 0, 0, nil, Device_Allocator_Error.Unknown
 			}
 
 			if .HOST_VISIBLE in memory_property_flags {
@@ -319,16 +340,16 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 					break
 				case .ERROR_MEMORY_MAP_FAILED:
 					vk.FreeMemory(heap.device, memory, nil)
-					return 0, 0, Device_Allocator_Error.Memory_Map_Failed
+					return 0, 0, nil, Device_Allocator_Error.Memory_Map_Failed
 				case .ERROR_OUT_OF_DEVICE_MEMORY:
 					vk.FreeMemory(heap.device, memory, nil)
-					return 0, 0, Device_Allocator_Error.Out_Of_Device_Memory
+					return 0, 0, nil, Device_Allocator_Error.Out_Of_Device_Memory
 				case .ERROR_OUT_OF_HOST_MEMORY:
 					vk.FreeMemory(heap.device, memory, nil)
-					return 0, 0, Device_Allocator_Error.Out_Of_Host_Memory
+					return 0, 0, nil, Device_Allocator_Error.Out_Of_Host_Memory
 				case:
 					vk.FreeMemory(heap.device, memory, nil)
-					return 0, 0, Device_Allocator_Error.Unknown
+					return 0, 0, nil, Device_Allocator_Error.Unknown
 				}
 				heap_allocation.property_flags += { .Is_Mapped }
 			}
@@ -339,7 +360,7 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 			}
 			if append_count := append(&heap_allocation.allocation_array, suballocation); append_count == 0 {
 				vk.FreeMemory(heap.device, memory, nil)
-				return 0, 0, mem.Allocator_Error.Out_Of_Memory
+				return 0, 0, nil, mem.Allocator_Error.Out_Of_Memory
 			}
 
 			free_suballocation = {
@@ -349,7 +370,7 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 			if append_count := append(&heap_allocation.free_array, free_suballocation); append_count == 0 {
 				vk.FreeMemory(heap.device, memory, nil)
 				pop(&heap_allocation.allocation_array)
-				return 0, 0, mem.Allocator_Error.Out_Of_Memory
+				return 0, 0, nil, mem.Allocator_Error.Out_Of_Memory
 			}
 
 			heap.allocations[memory] = heap_allocation
@@ -359,11 +380,11 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 				allocations_map_append_ok = memory in heap.allocations
 				if allocations_map_append_ok == false {
 					vk.FreeMemory(heap.device, memory, nil)
-					return 0, 0, mem.Allocator_Error.Out_Of_Memory
+					return 0, 0, nil, mem.Allocator_Error.Out_Of_Memory
 				}
 			}
 
-			return memory, suballocation.offset, nil
+			return memory, suballocation.offset, nil, nil
 		}
 	case .Free:
 		heap_allocation: Heap_Allocation
@@ -374,7 +395,7 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 
 		heap_allocation, heap_allocation_exists = heap.allocations[old_memory]
 		if heap_allocation_exists == false {
-			return 0, 0, Device_Allocator_Error.Bad_Free
+			return 0, 0, nil, Device_Allocator_Error.Bad_Free
 		}
 
 		for _allocation, _allocation_index in heap_allocation.allocation_array {
@@ -385,7 +406,7 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 			}
 		}
 		if allocation.size == 0 {
-			return 0, 0, Device_Allocator_Error.Bad_Free
+			return 0, 0, nil, Device_Allocator_Error.Bad_Free
 		}
 
 		free_allocation = allocation
@@ -424,12 +445,30 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 			append(&heap_allocation.free_array, free_allocation) or_return
 		}
 
-		return 0, 0, nil
+		return 0, 0, nil, nil
 	case .Free_All:
-		return 0, 0, Device_Allocator_Error.Mode_Not_Implemented
+		return 0, 0, nil, Device_Allocator_Error.Mode_Not_Implemented
+	case .Map:
+		heap_allocation: Heap_Allocation
+		heap_allocation_found: bool
+
+		heap_allocation, heap_allocation_found = heap.allocations[old_memory]
+		if heap_allocation_found == false {
+			return 0, 0, nil, Device_Allocator_Error.Invalid_Argument
+		}
+
+		if .Is_Mapped not_in heap_allocation.property_flags {
+			return 0, 0, nil, Device_Allocator_Error.Unmappable_Memory
+		}
+
+		if old_memory_offset >= heap_allocation.size {
+			return 0, 0, nil, Device_Allocator_Error.Map_Out_Of_Bounds
+		}
+
+		return old_memory, old_memory_offset, (cast([^]byte)heap_allocation.memory_ptr)[old_memory_offset:], nil
 	}
 
-	return 0, 0, Device_Allocator_Error.Unknown
+	return 0, 0, nil, Device_Allocator_Error.Unknown
 }
 
 get_memory_type_index :: proc(memory_type_bits: u32, requested_properties: vk.MemoryPropertyFlags, physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties) -> (u32, bool) #optional_ok {
