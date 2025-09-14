@@ -48,7 +48,7 @@ buffer_create :: proc(
 
 	// Create buffers
 	buffer_create_info.sType = .BUFFER_CREATE_INFO
-	#no_bounds_check for &buffer_out, idx in buffer_array_out {
+	for &buffer_out, idx in buffer_array_out {
 		create_buffer_error: vk.Result
 
 		create_buffer_error = vk.CreateBuffer(device, &buffer_create_info, nil, &buffer_out.handle)

@@ -305,6 +305,7 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 		{
 			heap_allocation: Heap_Allocation
 			memory_allocate_info: vk.MemoryAllocateInfo
+			memory_allocate_flags_info: vk.MemoryAllocateFlagsInfo
 			suballocation: Heap_Suballocation
 			free_suballocation: Heap_Suballocation
 
@@ -318,8 +319,13 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 				heap_allocation.property_flags += { .Linear_Resources }
 			}
 
+			memory_allocate_flags_info = {
+				sType = .MEMORY_ALLOCATE_FLAGS_INFO,
+				flags = { .DEVICE_ADDRESS },
+			}
 			memory_allocate_info = {
 				sType = .MEMORY_ALLOCATE_INFO,
+				pNext = &memory_allocate_flags_info,
 				allocationSize = alloc_size,
 				memoryTypeIndex = memory_type_index,
 			}
