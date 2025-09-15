@@ -63,7 +63,6 @@ copy :: proc(
 	device: vk.Device,
 	transfer_command_pool: vk.CommandPool,
 	transfer_queue: vk.Queue,
-	physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties,
 	copy_info_array: []Copy_Info,
 	temp_allocator := context.temp_allocator,
 ) -> (
@@ -115,6 +114,11 @@ copy :: proc(
 	transfer_submit_info: vk.SubmitInfo
 
 	context.temp_allocator = temp_allocator
+
+	assert(device != nil)
+	assert(transfer_command_pool != 0)
+	assert(transfer_queue != nil)
+	assert(copy_info_array != nil)
 
 	copy_fence.command_pool = transfer_command_pool
 	command_buffer_allocate_info = vk.CommandBufferAllocateInfo {
