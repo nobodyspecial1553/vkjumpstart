@@ -59,7 +59,7 @@ Copy_Fence :: struct {
 	 Please check 'ok' for failure. There are many failure points!
 */
 @(require_results)
-copy :: proc(
+copy_and_submit :: proc(
 	device: vk.Device,
 	transfer_command_pool: vk.CommandPool,
 	transfer_queue: vk.Queue,
@@ -67,6 +67,68 @@ copy :: proc(
 	temp_allocator := context.temp_allocator,
 ) -> (
 	copy_fence: Copy_Fence,
+	ok: bool,
+) {
+	command_buffer_allocate_info: vk.CommandBufferAllocateInfo
+	command_buffer_begin_info: vk.CommandBufferBeginInfo
+
+	transfer_fence_create_info: vk.FenceCreateInfo
+	transfer_submit_info: vk.SubmitInfo
+
+	context.temp_allocator = temp_allocator
+
+	assert(device != nil)
+	assert(transfer_command_pool != 0)
+	assert(transfer_queue != nil)
+	assert(copy_info_array != nil)
+
+	copy_fence.command_pool = transfer_command_pool
+	command_buffer_allocate_info = vk.CommandBufferAllocateInfo {
+		sType = .COMMAND_BUFFER_ALLOCATE_INFO,
+		commandPool = copy_fence.command_pool,
+		level = .PRIMARY,
+		commandBufferCount = 1,
+	}
+	check_result(vk.AllocateCommandBuffers(device, &command_buffer_allocate_info, &copy_fence.command_buffer), "Failed to allocate command buffer for transfer! [" + #procedure + "]") or_return
+	defer if copy_fence.fence == 0 {
+		vk.FreeCommandBuffers(device, copy_fence.command_pool, 1, &copy_fence.command_buffer)
+	}
+
+	command_buffer_begin_info = vk.CommandBufferBeginInfo {
+		sType = .COMMAND_BUFFER_BEGIN_INFO,
+		flags = { .ONE_TIME_SUBMIT },
+	}
+	copy_no_submit(device, copy_info_array, command_buffer_begin_info, &copy_fence.command_buffer) or_return
+
+	transfer_fence_create_info = vk.FenceCreateInfo {
+		sType = .FENCE_CREATE_INFO,
+	}
+	if check_result(vk.CreateFence(device, &transfer_fence_create_info, nil, &copy_fence.fence), "Unable to create transfer fence [" + #procedure + "]") == false {
+		return {}, false
+	}
+
+	transfer_submit_info = vk.SubmitInfo {
+		sType = .SUBMIT_INFO,
+		commandBufferCount = 1,
+		pCommandBuffers = &copy_fence.command_buffer,
+	}
+	if check_result(vk.QueueSubmit(transfer_queue, 1, &transfer_submit_info, copy_fence.fence), "Unable to submit copy commands to the queue!") == false {
+		vk.DestroyFence(device, copy_fence.fence, nil)
+		vk.FreeCommandBuffers(device, copy_fence.command_pool, 1, &copy_fence.command_buffer)
+		return {}, false
+	}
+
+	return copy_fence, true
+}
+
+@(require_results)
+copy_no_submit :: proc(
+	device: vk.Device,
+	copy_info_array: []Copy_Info,
+	transfer_command_buffer_begin_info: vk.CommandBufferBeginInfo,
+	transfer_command_buffer_out: ^vk.CommandBuffer,
+	temp_allocator := context.temp_allocator,
+) -> (
 	ok: bool,
 ) {
 	INITIAL_TEXTURE_MEMORY_BARRIER_TEMPLATE :: vk.ImageMemoryBarrier {
@@ -104,39 +166,20 @@ copy :: proc(
 		},
 	}
 
-	command_buffer_allocate_info: vk.CommandBufferAllocateInfo
-	command_buffer_begin_info: vk.CommandBufferBeginInfo
-
 	image_transitions: [dynamic]vk.ImageMemoryBarrier
 	image_transitions_index: int
 
-	transfer_fence_create_info: vk.FenceCreateInfo
-	transfer_submit_info: vk.SubmitInfo
+	transfer_command_buffer_begin_info := transfer_command_buffer_begin_info
 
 	context.temp_allocator = temp_allocator
 
 	assert(device != nil)
-	assert(transfer_command_pool != 0)
-	assert(transfer_queue != nil)
 	assert(copy_info_array != nil)
+	assert(transfer_command_buffer_out != nil)
+	assert(transfer_command_buffer_out^ != nil)
 
-	copy_fence.command_pool = transfer_command_pool
-	command_buffer_allocate_info = vk.CommandBufferAllocateInfo {
-		sType = .COMMAND_BUFFER_ALLOCATE_INFO,
-		commandPool = copy_fence.command_pool,
-		level = .PRIMARY,
-		commandBufferCount = 1,
-	}
-	check_result(vk.AllocateCommandBuffers(device, &command_buffer_allocate_info, &copy_fence.command_buffer), "Failed to allocate command buffer for transfer! [" + #procedure + "]") or_return
-	defer if copy_fence.fence == 0 {
-		vk.FreeCommandBuffers(device, copy_fence.command_pool, 1, &copy_fence.command_buffer)
-	}
-
-	command_buffer_begin_info = vk.CommandBufferBeginInfo {
-		sType = .COMMAND_BUFFER_BEGIN_INFO,
-		flags = { .ONE_TIME_SUBMIT },
-	}
-	check_result(vk.BeginCommandBuffer(copy_fence.command_buffer, &command_buffer_begin_info), "Failed to begin transfer command buffer! [" + #procedure + "]") or_return
+	transfer_command_buffer_begin_info.sType = .COMMAND_BUFFER_BEGIN_INFO
+	check_result(vk.BeginCommandBuffer(transfer_command_buffer_out^, &transfer_command_buffer_begin_info), "Failed to begin transfer command buffer! [" + #procedure + "]") or_return
 
 	image_transitions = make([dynamic]vk.ImageMemoryBarrier, 0, len(copy_info_array), context.temp_allocator)
 	// Transition all images into TRANSFER_DST_OPTIMAL
@@ -251,7 +294,7 @@ copy :: proc(
 		append(&image_transitions, src_texture_image_memory_barrier, dst_texture_image_memory_barrier)
 	}
 	vk.CmdPipelineBarrier(
-		commandBuffer = copy_fence.command_buffer,
+		commandBuffer = transfer_command_buffer_out^,
 		srcStageMask = { .TOP_OF_PIPE },
 		dstStageMask = { .TRANSFER },
 		dependencyFlags = {},
@@ -266,13 +309,13 @@ copy :: proc(
 	// Record copies into command buffer
 	for _copy_info in copy_info_array do switch copy_info in _copy_info {
 	case Copy_Info_Buffer_To_Buffer:
-		vk.CmdCopyBuffer(copy_fence.command_buffer, copy_info.src.buffer, copy_info.dst.buffer, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
+		vk.CmdCopyBuffer(transfer_command_buffer_out^, copy_info.src.buffer, copy_info.dst.buffer, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
 	case Copy_Info_Buffer_To_Image:
-		vk.CmdCopyBufferToImage(copy_fence.command_buffer, copy_info.src.buffer, copy_info.dst.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
+		vk.CmdCopyBufferToImage(transfer_command_buffer_out^, copy_info.src.buffer, copy_info.dst.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
 	case Copy_Info_Image_To_Buffer:
-		vk.CmdCopyImageToBuffer(copy_fence.command_buffer, copy_info.src.image, .TRANSFER_DST_OPTIMAL, copy_info.dst.buffer, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
+		vk.CmdCopyImageToBuffer(transfer_command_buffer_out^, copy_info.src.image, .TRANSFER_DST_OPTIMAL, copy_info.dst.buffer, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
 	case Copy_Info_Image_To_Image:
-		vk.CmdCopyImage(copy_fence.command_buffer, copy_info.src.image, .TRANSFER_SRC_OPTIMAL, copy_info.dst.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
+		vk.CmdCopyImage(transfer_command_buffer_out^, copy_info.src.image, .TRANSFER_SRC_OPTIMAL, copy_info.dst.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
 	}
 
 	// Transition all images into .final_layout
@@ -321,7 +364,7 @@ copy :: proc(
 		}
 	}
 	vk.CmdPipelineBarrier(
-		commandBuffer = copy_fence.command_buffer,
+		commandBuffer = transfer_command_buffer_out^,
 		srcStageMask = { .TRANSFER },
 		dstStageMask = { .ALL_COMMANDS },
 		dependencyFlags = {},
@@ -332,29 +375,8 @@ copy :: proc(
 		imageMemoryBarrierCount = cast(u32)len(image_transitions),
 		pImageMemoryBarriers = raw_data(image_transitions),
 	)
-
-
-	check_result(vk.EndCommandBuffer(copy_fence.command_buffer), "Failed to end transfer command buffer! [" + #procedure + "]") or_return
-
-	transfer_fence_create_info = vk.FenceCreateInfo {
-		sType = .FENCE_CREATE_INFO,
-	}
-	if check_result(vk.CreateFence(device, &transfer_fence_create_info, nil, &copy_fence.fence), "Unable to create transfer fence [" + #procedure + "]") == false {
-		return {}, false
-	}
-
-	transfer_submit_info = vk.SubmitInfo {
-		sType = .SUBMIT_INFO,
-		commandBufferCount = 1,
-		pCommandBuffers = &copy_fence.command_buffer,
-	}
-	if check_result(vk.QueueSubmit(transfer_queue, 1, &transfer_submit_info, copy_fence.fence), "Unable to submit copy commands to the queue!") == false {
-		vk.DestroyFence(device, copy_fence.fence, nil)
-		vk.FreeCommandBuffers(device, copy_fence.command_pool, 1, &copy_fence.command_buffer)
-		return {}, false
-	}
-
-	return copy_fence, true
+	check_result(vk.EndCommandBuffer(transfer_command_buffer_out^), "Failed to end transfer command buffer! [" + #procedure + "]") or_return
+	return true
 }
 
 copy_fence_wait :: proc(device: vk.Device, copy_fence: Copy_Fence, destroy_fence := true) -> (ok: bool) {
