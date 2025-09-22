@@ -5,8 +5,6 @@ package ns_vkjumpstart_vkjs
 
 import vk "vendor:vulkan"
 
-// TODO: host_image_copy versions
-
 Copy_Info_Buffer :: struct {
 	buffer: vk.Buffer,
 }
