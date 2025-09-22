@@ -343,7 +343,7 @@ device_create :: proc(
 				continue device_extension_match_found
 			}
 		}
-		log.errorf("Device Extension \"%s\" is not supported!")
+		log.errorf("Device Extension \"%s\" is not supported!", required_device_extension)
 		return device, queue_array, false
 	}
 
