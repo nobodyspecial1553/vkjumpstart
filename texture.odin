@@ -74,7 +74,7 @@ texture_create :: proc(
 
 	vk.GetImageMemoryRequirements(device, texture.image, &memory_requirements)
 
-	texture.memory, texture.memory_offset, allocator_error = device_alloc(memory_requirements.size, memory_requirements.alignment, memory_requirements.memoryTypeBits, { .DEVICE_LOCAL }, linear_tiling, device_allocator)
+	texture.memory, texture.memory_offset, _, allocator_error = device_alloc(memory_requirements.size, memory_requirements.alignment, memory_requirements.memoryTypeBits, { .DEVICE_LOCAL }, linear_tiling, device_allocator)
 	switch variant in allocator_error {
 	case Device_Allocator_Error:
 		vk.DestroyImage(device, texture.image, nil)
