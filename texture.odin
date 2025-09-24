@@ -6,27 +6,22 @@ import "core:mem"
 
 import vk "vendor:vulkan"
 
-Texture :: struct {
-	// Metadata
+Texture_Metadata :: struct {
 	using extent: vk.Extent3D, // has 'width', 'height' and 'depth'
 	format: vk.Format,
 	mip_levels: u32,
 	array_layers: u32,
 	samples: vk.SampleCountFlags,
 	usage: vk.ImageUsageFlags,
+}
 
-	// Data
+Texture :: struct {
+	using metadata: Texture_Metadata,
+
 	image: vk.Image,
 	memory: vk.DeviceMemory,
 	memory_offset: vk.DeviceSize,
 	device_allocator: Device_Allocator,
-	/*
-		 The 'views' member only exists as a convenience.
-		 No "vkjumpstart" procedure will populate it.
-		 However, some "vkjumpstart" procedures will do extra things if it is populated.
-		 For example, 'texture_destroy' will destroy the 'views'
-	*/
-	views: []vk.ImageView,
 }
 
 @(require_results)
@@ -35,8 +30,6 @@ texture_create :: proc(
 	physical_device: vk.PhysicalDevice,
 	image_create_info: vk.ImageCreateInfo,
 	device_allocator: Device_Allocator,
-	image_view_create_infos: []vk.ImageViewCreateInfo = nil,
-	image_views_out: []vk.ImageView = nil,
 ) -> (
 	texture: Texture,
 	error: Error,
@@ -93,46 +86,45 @@ texture_create :: proc(
 		return {}, error
 	}
 
-	// Create views (if applicable)
-	if len(image_views_out) == 0 || len(image_view_create_infos) == 0 { return texture, nil }
-
-	if len(image_views_out) > len(image_view_create_infos) {
-		vk.DestroyImage(device, texture.image, nil)
-		device_free(texture.memory, texture.memory_offset, device_allocator)
-		return {}, Device_Allocator_Error.Unknown
-	}
-	for &view, idx in image_views_out {
-		image_view_create_info := image_view_create_infos[idx]
-
-		image_view_create_info.sType = .IMAGE_VIEW_CREATE_INFO // Don't need to set yourself :)
-		image_view_create_info.image = texture.image
-		if vk.CreateImageView(device, &image_view_create_info, nil, &view) != .SUCCESS {
-			log.errorf("Unable to create ImageView[%v]", idx)
-
-			texture.views = image_views_out
-			texture_destroy(device, texture)
-
-			return texture, Device_Allocator_Error.Unknown
-		}
-	}
-
 	return texture, nil
 }
 
 texture_destroy :: proc(device: vk.Device, texture: Texture) {
+	assert(device != nil)
+
 	if texture.image != 0 {
 		vk.DestroyImage(device, texture.image, nil)
-	}
-	if texture.views != nil {
-		texture_destroy_views(device, texture.views)
 	}
 	device_free(texture.memory, texture.memory_offset, texture.device_allocator)
 }
 
-texture_destroy_views :: proc(device: vk.Device, views: []vk.ImageView) {
-	for view in views {
-		if view != 0 {
-			vk.DestroyImageView(device, view, nil)
-		}
-	}
+Texture_View :: struct {
+	using metadata: Texture_Metadata,
+
+	handle: vk.ImageView,
+}
+
+@(require_results)
+texture_view_create :: proc(
+	device: vk.Device,
+	image_view_create_info: vk.ImageViewCreateInfo,
+	texture_metadata: Texture_Metadata = {},
+) -> (
+	texture_view: Texture_View,
+	ok: bool,
+) #optional_ok {
+	image_view_create_info := image_view_create_info
+
+	assert(device != nil)
+
+	image_view_create_info.sType = .IMAGE_VIEW_CREATE_INFO
+	check_result(vk.CreateImageView(device, &image_view_create_info, nil, &texture_view.handle), "Failed to create image view!") or_return
+
+	return texture_view, true
+}
+
+texture_view_destroy :: proc(device: vk.Device, texture_view: Texture_View) {
+	assert(device != nil)
+
+	vk.DestroyImageView(device, texture_view.handle, nil)
 }
