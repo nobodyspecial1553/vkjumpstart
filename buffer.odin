@@ -54,7 +54,7 @@ buffer_create :: proc(
 
 		create_buffer_error = vk.CreateBuffer(device, &buffer_create_info, nil, &buffer.handle)
 
-		if check_result(vk.CreateBuffer(device, &buffer_create_info, nil, &buffer.handle)) == false {
+		if check_result(create_buffer_error) == false {
 			log.errorf("Failed to create buffer '%v' [" + #procedure + "]", idx)
 			destroy_buffers(device, buffer_array_out, idx)
 			return create_buffer_error
