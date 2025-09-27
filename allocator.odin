@@ -131,6 +131,7 @@ Heap_Allocation :: struct {
 	allocation_array: [dynamic]Heap_Suballocation,
 	free_array: [dynamic]Heap_Suballocation,
 	property_flags: Heap_Allocation_Property_Flags,
+	memory_type_bits: u32,
 }
 
 Heap :: struct {
@@ -269,6 +270,8 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 			switch {
 			case size > heap_allocation.size:
 				continue
+			case memory_type_bits != heap_allocation.memory_type_bits:
+				continue
 			case is_linear_resource && .Linear_Resources not_in heap_allocation.property_flags:
 				continue
 			case !is_linear_resource && .Linear_Resources in heap_allocation.property_flags:
@@ -323,6 +326,7 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 
 			heap_allocation = {
 				size = alloc_size,
+				memory_type_bits = memory_type_bits,
 			}
 			heap_allocation.allocation_array = make([dynamic]Heap_Suballocation, 0, 32, heap.allocator)
 			heap_allocation.free_array = make([dynamic]Heap_Suballocation, 0, 32, heap.allocator)
