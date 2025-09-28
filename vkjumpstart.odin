@@ -503,19 +503,29 @@ swapchain_destroy :: proc(swapchain: Swapchain, device: vk.Device) {
 				vk.DestroyImageView(device, view, nil)
 			}
 		}
+		delete(swapchain.view_array)
 	}
 	if swapchain.image_array != nil {
 		delete(swapchain.image_array)
-		delete(swapchain.view_array)
 	}
 	if swapchain.handle != 0 {
 		vk.DestroySwapchainKHR(device, swapchain.handle, nil)
 	}
-	for &semaphore in swapchain.semaphore_render_complete_array {
-		vk.DestroySemaphore(device, semaphore, nil)
+	if swapchain.semaphore_render_complete_array != nil {
+		for &semaphore in swapchain.semaphore_render_complete_array {
+			if semaphore != 0 {
+				vk.DestroySemaphore(device, semaphore, nil)
+			}
+		}
+		delete(swapchain.semaphore_render_complete_array)
 	}
-	for &semaphore in swapchain.semaphore_presentation_complete_array {
-		vk.DestroySemaphore(device, semaphore, nil)
+	if swapchain.semaphore_presentation_complete_array != nil {
+		for &semaphore in swapchain.semaphore_presentation_complete_array {
+			if semaphore != 0 {
+				vk.DestroySemaphore(device, semaphore, nil)
+			}
+		}
+		delete(swapchain.semaphore_presentation_complete_array)
 	}
 }
 
