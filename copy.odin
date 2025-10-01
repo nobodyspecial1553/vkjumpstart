@@ -98,7 +98,7 @@ copy_and_submit :: proc(
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
 		flags = { .ONE_TIME_SUBMIT },
 	}
-	copy_no_submit(device, copy_info_array, command_buffer_begin_info, &copy_fence.command_buffer, temp_allocator) or_return
+	copy_no_submit(copy_info_array, command_buffer_begin_info, &copy_fence.command_buffer, temp_allocator) or_return
 
 	transfer_fence_create_info = vk.FenceCreateInfo {
 		sType = .FENCE_CREATE_INFO,
@@ -123,7 +123,6 @@ copy_and_submit :: proc(
 
 @(require_results)
 copy_no_submit :: proc(
-	device: vk.Device,
 	copy_info_array: []Copy_Info,
 	transfer_command_buffer_begin_info: vk.CommandBufferBeginInfo,
 	transfer_command_buffer_out: ^vk.CommandBuffer,
@@ -135,14 +134,13 @@ copy_no_submit :: proc(
 
 	context.temp_allocator = temp_allocator
 
-	assert(device != nil)
 	assert(copy_info_array != nil)
 	assert(transfer_command_buffer_out != nil)
 	assert(transfer_command_buffer_out^ != nil)
 
 	transfer_command_buffer_begin_info.sType = .COMMAND_BUFFER_BEGIN_INFO
 	check_result(vk.BeginCommandBuffer(transfer_command_buffer_out^, &transfer_command_buffer_begin_info), "Failed to begin transfer command buffer! [" + #procedure + "]") or_return
-	copy_no_begin(device, copy_info_array, transfer_command_buffer_out, temp_allocator) or_return
+	copy_no_begin(copy_info_array, transfer_command_buffer_out, temp_allocator) or_return
 	check_result(vk.EndCommandBuffer(transfer_command_buffer_out^), "Failed to end transfer command buffer! [" + #procedure + "]") or_return
 
 	return true
@@ -150,7 +148,6 @@ copy_no_submit :: proc(
 
 @(require_results)
 copy_no_begin :: proc(
-	device: vk.Device,
 	copy_info_array: []Copy_Info,
 	transfer_command_buffer_out: ^vk.CommandBuffer,
 	temp_allocator := context.temp_allocator,
@@ -197,7 +194,6 @@ copy_no_begin :: proc(
 
 	context.temp_allocator = temp_allocator
 
-	assert(device != nil)
 	assert(copy_info_array != nil)
 	assert(transfer_command_buffer_out != nil)
 	assert(transfer_command_buffer_out^ != nil)
