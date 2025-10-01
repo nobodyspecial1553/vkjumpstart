@@ -16,27 +16,27 @@ Copy_Info_Image :: struct {
 }
 
 Copy_Info_Buffer_To_Buffer :: struct {
-	src: Copy_Info_Buffer,
-	dst: Copy_Info_Buffer,
-	copy_regions: []vk.BufferCopy,
+	source: Copy_Info_Buffer,
+	destination: Copy_Info_Buffer,
+	copy_region_array: []vk.BufferCopy,
 }
 
 Copy_Info_Buffer_To_Image :: struct {
-	src: Copy_Info_Buffer,
-	dst: Copy_Info_Image,
-	copy_regions: []vk.BufferImageCopy,
+	source: Copy_Info_Buffer,
+	destination: Copy_Info_Image,
+	copy_region_array: []vk.BufferImageCopy,
 }
 
 Copy_Info_Image_To_Buffer :: struct {
-	src: Copy_Info_Image,
-	dst: Copy_Info_Buffer,
-	copy_regions: []vk.BufferImageCopy,
+	source: Copy_Info_Image,
+	destination: Copy_Info_Buffer,
+	copy_region_array: []vk.BufferImageCopy,
 }
 
 Copy_Info_Image_To_Image :: struct {
-	src: Copy_Info_Image,
-	dst: Copy_Info_Image,
-	copy_regions: []vk.ImageCopy,
+	source: Copy_Info_Image,
+	destination: Copy_Info_Image,
+	copy_region_array: []vk.ImageCopy,
 }
 
 Copy_Info :: union {
@@ -213,7 +213,7 @@ copy_no_begin :: proc(
 		max_mip_level := u32(0)
 		min_array_layer := max(u32)
 		max_array_layer := u32(0)
-		for copy_region in copy_info.copy_regions {
+		for copy_region in copy_info.copy_region_array {
 			aspect_mask |= copy_region.imageSubresource.aspectMask
 			min_mip_level = min(min_mip_level, copy_region.imageSubresource.mipLevel)
 			max_mip_level = max(max_mip_level, copy_region.imageSubresource.mipLevel)
@@ -221,8 +221,8 @@ copy_no_begin :: proc(
 			max_array_layer = max(max_array_layer, copy_region.imageSubresource.baseArrayLayer + copy_region.imageSubresource.layerCount - 1)
 		}
 		texture_image_memory_barrier := INITIAL_TEXTURE_MEMORY_BARRIER_TEMPLATE
-		texture_image_memory_barrier.image = copy_info.dst.image
-		texture_image_memory_barrier.oldLayout = copy_info.dst.initial_layout
+		texture_image_memory_barrier.image = copy_info.destination.image
+		texture_image_memory_barrier.oldLayout = copy_info.destination.initial_layout
 		texture_image_memory_barrier.newLayout = .TRANSFER_DST_OPTIMAL
 		texture_image_memory_barrier.subresourceRange = {
 			aspectMask = aspect_mask,
@@ -238,7 +238,7 @@ copy_no_begin :: proc(
 		max_mip_level := u32(0)
 		min_array_layer := max(u32)
 		max_array_layer := u32(0)
-		for copy_region in copy_info.copy_regions {
+		for copy_region in copy_info.copy_region_array {
 			aspect_mask |= copy_region.imageSubresource.aspectMask
 			min_mip_level = min(min_mip_level, copy_region.imageSubresource.mipLevel)
 			max_mip_level = max(max_mip_level, copy_region.imageSubresource.mipLevel)
@@ -246,8 +246,8 @@ copy_no_begin :: proc(
 			max_array_layer = max(max_array_layer, copy_region.imageSubresource.baseArrayLayer + copy_region.imageSubresource.layerCount - 1)
 		}
 		texture_image_memory_barrier := INITIAL_TEXTURE_MEMORY_BARRIER_TEMPLATE
-		texture_image_memory_barrier.image = copy_info.src.image
-		texture_image_memory_barrier.oldLayout = copy_info.src.initial_layout
+		texture_image_memory_barrier.image = copy_info.source.image
+		texture_image_memory_barrier.oldLayout = copy_info.source.initial_layout
 		texture_image_memory_barrier.newLayout = .TRANSFER_SRC_OPTIMAL
 		texture_image_memory_barrier.subresourceRange = {
 			aspectMask = aspect_mask,
@@ -260,8 +260,8 @@ copy_no_begin :: proc(
 	case Copy_Info_Image_To_Image:
 		// Src
 		src_texture_image_memory_barrier := INITIAL_TEXTURE_MEMORY_BARRIER_TEMPLATE
-		src_texture_image_memory_barrier.image = copy_info.src.image
-		src_texture_image_memory_barrier.oldLayout = copy_info.src.initial_layout
+		src_texture_image_memory_barrier.image = copy_info.source.image
+		src_texture_image_memory_barrier.oldLayout = copy_info.source.initial_layout
 		src_texture_image_memory_barrier.newLayout = .TRANSFER_SRC_OPTIMAL
 		{
 			aspect_mask: vk.ImageAspectFlags
@@ -270,7 +270,7 @@ copy_no_begin :: proc(
 			min_array_layer := max(u32)
 			max_array_layer := u32(0)
 
-			for copy_region in copy_info.copy_regions {
+			for copy_region in copy_info.copy_region_array {
 				aspect_mask |= copy_region.srcSubresource.aspectMask
 				min_mip_level = min(min_mip_level, copy_region.srcSubresource.mipLevel)
 				max_mip_level = max(max_mip_level, copy_region.srcSubresource.mipLevel)
@@ -287,8 +287,8 @@ copy_no_begin :: proc(
 		}
 		// Dst
 		dst_texture_image_memory_barrier := INITIAL_TEXTURE_MEMORY_BARRIER_TEMPLATE
-		dst_texture_image_memory_barrier.image = copy_info.dst.image
-		dst_texture_image_memory_barrier.oldLayout = copy_info.dst.initial_layout
+		dst_texture_image_memory_barrier.image = copy_info.destination.image
+		dst_texture_image_memory_barrier.oldLayout = copy_info.destination.initial_layout
 		dst_texture_image_memory_barrier.newLayout = .TRANSFER_DST_OPTIMAL
 		{
 			aspect_mask: vk.ImageAspectFlags
@@ -297,7 +297,7 @@ copy_no_begin :: proc(
 			min_array_layer := max(u32)
 			max_array_layer := u32(0)
 
-			for copy_region in copy_info.copy_regions {
+			for copy_region in copy_info.copy_region_array {
 				aspect_mask |= copy_region.dstSubresource.aspectMask
 				min_mip_level = min(min_mip_level, copy_region.dstSubresource.mipLevel)
 				max_mip_level = max(max_mip_level, copy_region.dstSubresource.mipLevel)
@@ -330,13 +330,13 @@ copy_no_begin :: proc(
 	// Record copies into command buffer
 	for _copy_info in copy_info_array do switch copy_info in _copy_info {
 	case Copy_Info_Buffer_To_Buffer:
-		vk.CmdCopyBuffer(transfer_command_buffer_out^, copy_info.src.buffer, copy_info.dst.buffer, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
+		vk.CmdCopyBuffer(transfer_command_buffer_out^, copy_info.source.buffer, copy_info.destination.buffer, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	case Copy_Info_Buffer_To_Image:
-		vk.CmdCopyBufferToImage(transfer_command_buffer_out^, copy_info.src.buffer, copy_info.dst.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
+		vk.CmdCopyBufferToImage(transfer_command_buffer_out^, copy_info.source.buffer, copy_info.destination.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	case Copy_Info_Image_To_Buffer:
-		vk.CmdCopyImageToBuffer(transfer_command_buffer_out^, copy_info.src.image, .TRANSFER_DST_OPTIMAL, copy_info.dst.buffer, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
+		vk.CmdCopyImageToBuffer(transfer_command_buffer_out^, copy_info.source.image, .TRANSFER_DST_OPTIMAL, copy_info.destination.buffer, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	case Copy_Info_Image_To_Image:
-		vk.CmdCopyImage(transfer_command_buffer_out^, copy_info.src.image, .TRANSFER_SRC_OPTIMAL, copy_info.dst.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_regions), raw_data(copy_info.copy_regions))
+		vk.CmdCopyImage(transfer_command_buffer_out^, copy_info.source.image, .TRANSFER_SRC_OPTIMAL, copy_info.destination.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	}
 
 	// Transition all images into .final_layout
@@ -348,9 +348,9 @@ copy_no_begin :: proc(
 			texture_image_memory_barrier := &image_transitions[image_transitions_index]
 			subresource_range := texture_image_memory_barrier.subresourceRange
 			texture_image_memory_barrier^ = FINAL_TEXTURE_MEMORY_BARRIER_TEMPLATE
-			texture_image_memory_barrier.image = copy_info.dst.image
+			texture_image_memory_barrier.image = copy_info.destination.image
 			texture_image_memory_barrier.oldLayout = .TRANSFER_DST_OPTIMAL
-			texture_image_memory_barrier.newLayout = copy_info.dst.final_layout
+			texture_image_memory_barrier.newLayout = copy_info.destination.final_layout
 			texture_image_memory_barrier.subresourceRange = subresource_range
 
 			image_transitions_index += 1
@@ -358,9 +358,9 @@ copy_no_begin :: proc(
 			texture_image_memory_barrier := &image_transitions[image_transitions_index]
 			subresource_range := texture_image_memory_barrier.subresourceRange
 			texture_image_memory_barrier^ = FINAL_TEXTURE_MEMORY_BARRIER_TEMPLATE
-			texture_image_memory_barrier.image = copy_info.src.image
+			texture_image_memory_barrier.image = copy_info.source.image
 			texture_image_memory_barrier.oldLayout = .TRANSFER_SRC_OPTIMAL
-			texture_image_memory_barrier.newLayout = copy_info.src.final_layout
+			texture_image_memory_barrier.newLayout = copy_info.source.final_layout
 			texture_image_memory_barrier.subresourceRange = subresource_range
 
 			image_transitions_index += 1
@@ -368,17 +368,17 @@ copy_no_begin :: proc(
 			src_texture_image_memory_barrier := &image_transitions[image_transitions_index]
 			src_subresource_range := src_texture_image_memory_barrier.subresourceRange
 			src_texture_image_memory_barrier^ = FINAL_TEXTURE_MEMORY_BARRIER_TEMPLATE
-			src_texture_image_memory_barrier.image = copy_info.src.image
+			src_texture_image_memory_barrier.image = copy_info.source.image
 			src_texture_image_memory_barrier.oldLayout = .TRANSFER_SRC_OPTIMAL
-			src_texture_image_memory_barrier.newLayout = copy_info.src.final_layout
+			src_texture_image_memory_barrier.newLayout = copy_info.source.final_layout
 			src_texture_image_memory_barrier.subresourceRange = src_subresource_range
 
 			dst_texture_image_memory_barrier := &image_transitions[image_transitions_index + 1]
 			dst_subresource_range := dst_texture_image_memory_barrier.subresourceRange
 			dst_texture_image_memory_barrier^ = FINAL_TEXTURE_MEMORY_BARRIER_TEMPLATE
-			dst_texture_image_memory_barrier.image = copy_info.dst.image
+			dst_texture_image_memory_barrier.image = copy_info.destination.image
 			dst_texture_image_memory_barrier.oldLayout = .TRANSFER_DST_OPTIMAL
-			dst_texture_image_memory_barrier.newLayout = copy_info.dst.final_layout
+			dst_texture_image_memory_barrier.newLayout = copy_info.destination.final_layout
 			dst_texture_image_memory_barrier.subresourceRange = dst_subresource_range
 
 			image_transitions_index += 2
