@@ -799,31 +799,3 @@ find_optimal_physical_device :: proc(
 	physical_device = physical_device_array[chosen_physical_device_index]
 	return physical_device, true
 }
-
-find_first_supported_image_format :: proc(physical_device: vk.PhysicalDevice, format_options: []vk.Format, tiling: vk.ImageTiling, features: vk.FormatFeatureFlags) -> (vk.Format, bool) #optional_ok {
-	for format in format_options {
-		format_properties: vk.FormatProperties = ---
-		vk.GetPhysicalDeviceFormatProperties(physical_device, format, &format_properties)
-
-		switch {
-		case tiling == .LINEAR && (format_properties.linearTilingFeatures & features) == features:
-			return format, true
-		case tiling == .OPTIMAL && (format_properties.optimalTilingFeatures & features) == features:
-			return format, true
-		}
-	}
-
-	log.error("Unable to find supported image format!")
-	return .UNDEFINED, false
-}
-
-format_has_stencil_component :: #force_inline proc "contextless" (format: vk.Format) -> bool {
-	#partial switch format {
-	case .D32_SFLOAT_S8_UINT,
-			 .D24_UNORM_S8_UINT,
-			 .D16_UNORM_S8_UINT:
-		return true
-	case:
-		return false
-	}
-}
