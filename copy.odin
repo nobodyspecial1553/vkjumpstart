@@ -98,7 +98,7 @@ copy_and_submit :: proc(
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
 		flags = { .ONE_TIME_SUBMIT },
 	}
-	copy_no_submit(copy_info_array, command_buffer_begin_info, &copy_fence.command_buffer, temp_allocator) or_return
+	copy_no_submit(copy_info_array, command_buffer_begin_info, copy_fence.command_buffer, temp_allocator) or_return
 
 	transfer_fence_create_info = vk.FenceCreateInfo {
 		sType = .FENCE_CREATE_INFO,
@@ -125,7 +125,7 @@ copy_and_submit :: proc(
 copy_no_submit :: proc(
 	copy_info_array: []Copy_Info,
 	transfer_command_buffer_begin_info: vk.CommandBufferBeginInfo,
-	transfer_command_buffer_out: ^vk.CommandBuffer,
+	transfer_command_buffer: vk.CommandBuffer,
 	temp_allocator := context.temp_allocator,
 ) -> (
 	ok: bool,
@@ -135,13 +135,12 @@ copy_no_submit :: proc(
 	context.temp_allocator = temp_allocator
 
 	assert(copy_info_array != nil)
-	assert(transfer_command_buffer_out != nil)
-	assert(transfer_command_buffer_out^ != nil)
+	assert(transfer_command_buffer != nil)
 
 	transfer_command_buffer_begin_info.sType = .COMMAND_BUFFER_BEGIN_INFO
-	check_result(vk.BeginCommandBuffer(transfer_command_buffer_out^, &transfer_command_buffer_begin_info), "Failed to begin transfer command buffer! [" + #procedure + "]") or_return
-	copy_no_begin(copy_info_array, transfer_command_buffer_out, temp_allocator) or_return
-	check_result(vk.EndCommandBuffer(transfer_command_buffer_out^), "Failed to end transfer command buffer! [" + #procedure + "]") or_return
+	check_result(vk.BeginCommandBuffer(transfer_command_buffer, &transfer_command_buffer_begin_info), "Failed to begin transfer command buffer! [" + #procedure + "]") or_return
+	copy_no_begin(copy_info_array, transfer_command_buffer, temp_allocator) or_return
+	check_result(vk.EndCommandBuffer(transfer_command_buffer), "Failed to end transfer command buffer! [" + #procedure + "]") or_return
 
 	return true
 }
@@ -149,7 +148,7 @@ copy_no_submit :: proc(
 @(require_results)
 copy_no_begin :: proc(
 	copy_info_array: []Copy_Info,
-	transfer_command_buffer_out: ^vk.CommandBuffer,
+	transfer_command_buffer: vk.CommandBuffer,
 	temp_allocator := context.temp_allocator,
 ) -> (
 	ok: bool,
@@ -195,8 +194,7 @@ copy_no_begin :: proc(
 	context.temp_allocator = temp_allocator
 
 	assert(copy_info_array != nil)
-	assert(transfer_command_buffer_out != nil)
-	assert(transfer_command_buffer_out^ != nil)
+	assert(transfer_command_buffer != nil)
 
 	image_transitions = make([dynamic]vk.ImageMemoryBarrier, 0, len(copy_info_array), context.temp_allocator)
 	// Transition all images into TRANSFER_DST_OPTIMAL
@@ -311,7 +309,7 @@ copy_no_begin :: proc(
 		append(&image_transitions, src_texture_image_memory_barrier, dst_texture_image_memory_barrier)
 	}
 	vk.CmdPipelineBarrier(
-		commandBuffer = transfer_command_buffer_out^,
+		commandBuffer = transfer_command_buffer,
 		srcStageMask = { .TOP_OF_PIPE },
 		dstStageMask = { .TRANSFER },
 		dependencyFlags = {},
@@ -326,13 +324,13 @@ copy_no_begin :: proc(
 	// Record copies into command buffer
 	for _copy_info in copy_info_array do switch copy_info in _copy_info {
 	case Copy_Info_Buffer_To_Buffer:
-		vk.CmdCopyBuffer(transfer_command_buffer_out^, copy_info.source.buffer, copy_info.destination.buffer, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
+		vk.CmdCopyBuffer(transfer_command_buffer, copy_info.source.buffer, copy_info.destination.buffer, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	case Copy_Info_Buffer_To_Image:
-		vk.CmdCopyBufferToImage(transfer_command_buffer_out^, copy_info.source.buffer, copy_info.destination.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
+		vk.CmdCopyBufferToImage(transfer_command_buffer, copy_info.source.buffer, copy_info.destination.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	case Copy_Info_Image_To_Buffer:
-		vk.CmdCopyImageToBuffer(transfer_command_buffer_out^, copy_info.source.image, .TRANSFER_DST_OPTIMAL, copy_info.destination.buffer, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
+		vk.CmdCopyImageToBuffer(transfer_command_buffer, copy_info.source.image, .TRANSFER_DST_OPTIMAL, copy_info.destination.buffer, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	case Copy_Info_Image_To_Image:
-		vk.CmdCopyImage(transfer_command_buffer_out^, copy_info.source.image, .TRANSFER_SRC_OPTIMAL, copy_info.destination.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
+		vk.CmdCopyImage(transfer_command_buffer, copy_info.source.image, .TRANSFER_SRC_OPTIMAL, copy_info.destination.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	}
 
 	// Transition all images into .final_layout
@@ -381,7 +379,7 @@ copy_no_begin :: proc(
 		}
 	}
 	vk.CmdPipelineBarrier(
-		commandBuffer = transfer_command_buffer_out^,
+		commandBuffer = transfer_command_buffer,
 		srcStageMask = { .TRANSFER },
 		dstStageMask = { .ALL_COMMANDS },
 		dependencyFlags = {},
