@@ -164,9 +164,9 @@ copy_no_begin :: proc(
 		image = 0, // Replace with image
 		subresourceRange = { // Replace
 			aspectMask = {},
-			baseMipLevel = 0,
+			baseMipLevel = max(u32),
 			levelCount = 0,
-			baseArrayLayer = 0,
+			baseArrayLayer = max(u32),
 			layerCount = 0,
 		},
 	}
@@ -197,7 +197,7 @@ copy_no_begin :: proc(
 	assert(transfer_command_buffer != nil)
 
 	image_transitions = make([dynamic]vk.ImageMemoryBarrier, 0, len(copy_info_array), context.temp_allocator)
-	// Transition all images into TRANSFER_DST_OPTIMAL
+	// Transition all images into TRANSFER_(SRC/DST)_OPTIMAL
 	for _copy_info in copy_info_array do switch copy_info in _copy_info {
 	case Copy_Info_Buffer_To_Buffer:
 		break
@@ -328,7 +328,7 @@ copy_no_begin :: proc(
 	case Copy_Info_Buffer_To_Image:
 		vk.CmdCopyBufferToImage(transfer_command_buffer, copy_info.source.buffer, copy_info.destination.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	case Copy_Info_Image_To_Buffer:
-		vk.CmdCopyImageToBuffer(transfer_command_buffer, copy_info.source.image, .TRANSFER_DST_OPTIMAL, copy_info.destination.buffer, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
+		vk.CmdCopyImageToBuffer(transfer_command_buffer, copy_info.source.image, .TRANSFER_SRC_OPTIMAL, copy_info.destination.buffer, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	case Copy_Info_Image_To_Image:
 		vk.CmdCopyImage(transfer_command_buffer, copy_info.source.image, .TRANSFER_SRC_OPTIMAL, copy_info.destination.image, .TRANSFER_DST_OPTIMAL, cast(u32)len(copy_info.copy_region_array), raw_data(copy_info.copy_region_array))
 	}
