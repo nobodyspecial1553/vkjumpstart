@@ -288,8 +288,32 @@ Queue :: struct {
 	handle: vk.Queue,
 	family: u32,
 }
-
 Queue_Array :: [Queue_Type]Queue
+
+@(require_results)
+unique_queue_families_from_queues :: proc(
+	queue_array_in: []Queue,
+	temp_allocator := context.temp_allocator,
+) -> (
+	queue_family_array_out: []u32,
+	allocator_error: mem.Allocator_Error,
+) #optional_allocator_error {
+	queue_family_array: [dynamic]u32
+
+	assert(queue_array_in != nil)
+
+	queue_family_array = make([dynamic]u32, 0, len(queue_array_in), temp_allocator) or_return
+	queue_array_in_loop: for queue in queue_array_in {
+		for queue_family in queue_family_array {
+			if queue_family == queue.family {
+				continue queue_array_in_loop
+			}
+		}
+		append(&queue_family_array, queue.family)
+	}
+
+	return queue_family_array[:], nil
+}
 
 @(require_results)
 device_create :: proc(

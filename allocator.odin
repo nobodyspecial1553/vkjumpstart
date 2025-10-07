@@ -241,8 +241,8 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 	size := size
 	alignment := alignment
 
-	context.allocator = {}
-	context.temp_allocator = {}
+	context.allocator = mem.panic_allocator()
+	context.temp_allocator = mem.panic_allocator()
 
 	assert(data != nil)
 
