@@ -272,6 +272,8 @@ heap_allocator_procedure : Device_Allocator_Proc : proc(
 				continue
 			case memory_type_bits != heap_allocation.memory_type_bits:
 				continue
+			case .HOST_VISIBLE in memory_property_flags && .Is_Mapped not_in heap_allocation.property_flags:
+				continue
 			case is_linear_resource && .Linear_Resources not_in heap_allocation.property_flags:
 				continue
 			case !is_linear_resource && .Linear_Resources in heap_allocation.property_flags:
