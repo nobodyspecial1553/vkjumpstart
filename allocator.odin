@@ -186,17 +186,17 @@ heap_init :: proc(
 	heap.max_memory_allocation_count = physical_device_properties.limits.maxMemoryAllocationCount
 	heap.non_coherent_atom_size = physical_device_properties.limits.nonCoherentAtomSize
 
-	log.infof("Buffer Image Granularity: %v", heap.buffer_image_granularity)
-	log.infof("Max Memory Allocation Count: %v", heap.max_memory_allocation_count)
+	log.debugf("Buffer Image Granularity: %v", heap.buffer_image_granularity)
+	log.debugf("Max Memory Allocation Count: %v", heap.max_memory_allocation_count)
 
-	log.infof("Memory Heap Count: %v", heap.physical_device_memory_properties.memoryHeapCount)
+	log.debugf("Memory Heap Count: %v", heap.physical_device_memory_properties.memoryHeapCount)
 	for memory_heap, index in heap.physical_device_memory_properties.memoryHeaps[:heap.physical_device_memory_properties.memoryHeapCount] {
-		log.infof("Memory Heap %v - Size: %v; Flags: %v", index, memory_heap.size, memory_heap.flags)
+		log.debugf("Memory Heap %v - Size: %v; Flags: %v", index, memory_heap.size, memory_heap.flags)
 	}
 
-	log.infof("Memory Type Count: %v", heap.physical_device_memory_properties.memoryTypeCount)
+	log.debugf("Memory Type Count: %v", heap.physical_device_memory_properties.memoryTypeCount)
 	for memory_type, index in heap.physical_device_memory_properties.memoryTypes[:heap.physical_device_memory_properties.memoryTypeCount] {
-		log.infof("Memory Type %v - Heap index: %v; Property Flags: %v", index, memory_type.heapIndex, memory_type.propertyFlags)
+		log.debugf("Memory Type %v - Heap index: %v; Property Flags: %v", index, memory_type.heapIndex, memory_type.propertyFlags)
 	}
 
 	return .None
