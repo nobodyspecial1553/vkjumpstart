@@ -35,7 +35,9 @@ shader_module_create_from_stream :: proc(
 		return shader_module, false
 	}
 
-	defer delete(shader_code_buffer)
+	defer if shader_code_buffer != nil {
+		delete(shader_code_buffer)
+	}
 	if .Size in in_stream_capabilities {
 		in_stream_size: i64
 		bytes_read: int
@@ -123,7 +125,7 @@ shader_module_create_from_file :: proc(
 	}
 	defer os.close(shader_file)
 
-	bufio.reader_init(&buffered_reader, shader_file.stream, allocator = allocator)
+	bufio.reader_init(&buffered_reader, os.to_stream(shader_file), allocator = allocator)
 	defer bufio.reader_destroy(&buffered_reader)
 	buffered_reader_stream = bufio.reader_to_stream(&buffered_reader)
 
