@@ -5,7 +5,7 @@ package ns_vkjumpstart_vkjs
 import "core:io"
 import "core:bufio"
 import "core:slice"
-import os "core:os/os2"
+import os "core:os"
 
 import vk "vendor:vulkan"
 
