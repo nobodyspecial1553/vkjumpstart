@@ -321,7 +321,7 @@ device_create :: proc(
 	surface: vk.SurfaceKHR,
 	device_extension_array: []cstring = { vk.KHR_SWAPCHAIN_EXTENSION_NAME },
 	physical_device_features_node: rawptr = nil,
-	enable_debug_features: bool = ENABLE_DEBUG_FEATURES,
+	//enable_debug_features: bool = ENABLE_DEBUG_FEATURES,
 	temp_allocator := context.temp_allocator,
 ) -> (
 	device: vk.Device,
@@ -462,6 +462,7 @@ device_create :: proc(
 		ppEnabledExtensionNames = raw_data(device_extension_array),
 	}
 
+	/*
 	if enable_debug_features {
 		// Device layers are deprecated
 		@(static, rodata)
@@ -494,6 +495,7 @@ device_create :: proc(
 		device_create_info.enabledLayerCount = len(required_device_layer_property_array)
 		device_create_info.ppEnabledLayerNames = raw_data(&required_device_layer_property_array)
 	}
+	*/
 
 	check_result(vk.CreateDevice(physical_device, &device_create_info, nil, &device), "Failed to create Logical Device!") or_return
 
