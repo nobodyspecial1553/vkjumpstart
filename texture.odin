@@ -142,7 +142,7 @@ find_first_supported_image_format :: proc(physical_device: vk.PhysicalDevice, fo
 		}
 	}
 
-	log.error("Unable to find supported image format!")
+	log.warn("Unable to find supported image format!")
 	return .UNDEFINED, false
 }
 
